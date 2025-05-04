@@ -4,14 +4,17 @@
 
 #define PHYS_OFFSET 0xffffffff80000000
 #define PHYS_TO_VIRT(x) ((void *)((uintptr_t)(x) + PHYS_OFFSET))
+#define VIRT_TO_PHYS(x) ((uintptr_t)(x) - PHYS_OFFSET)
 #define PAGE_SIZE   0x1000
 #define PAGE_PRESENT 1
 #define PAGE_RW      2
+#define PAGE_MASK    ~0xfff
 
 uint8_t *bitmap = NULL;
 size_t total_pages = 0;
 uintptr_t highest_addr = 0;
 
+page_table_t *kernel_pml4 = NULL;
 static inline void set_bit(size_t bit) {
     bitmap[bit / 8] |= (1 << (bit % 8));
 }
@@ -33,9 +36,40 @@ void *memset(void *s, int c, size_t n) {
 }
 
 void map_page(uintptr_t phys_addr, uintptr_t virt_addr, int flags) {
-    (void)phys_addr;
-    (void)virt_addr;
-    (void)flags;
+    uint64_t *pml4 = (uint64_t *)PHYS_TO_VIRT(kernel_pml4);
+    uint64_t pml4_index = (virt_addr >> 39) & 0x1FF;
+    uint64_t pdpt_index = (virt_addr >> 30) & 0x1FF;
+    uint64_t pd_index = (virt_addr >> 21) & 0x1FF;
+    uint64_t pt_index = (virt_addr >> 12) & 0x1FF;
+
+    if (!(pml4[pml4_index] & PAGE_PRESENT)) {
+        void *pdpt_virt = pmm_alloc();
+        if (!pdpt_virt) return;
+        uintptr_t pdpt_phys = VIRT_TO_PHYS(pdpt_virt);
+        pml4[pml4_index] = pdpt_phys | flags;
+        memset(pdpt_virt, 0, PAGE_SIZE);
+    }
+
+    uint64_t *pdpt = (uint64_t *)PHYS_TO_VIRT(pml4[pml4_index] & PAGE_MASK);
+    if (!(pdpt[pdpt_index] & PAGE_PRESENT)) {
+        void *pd_virt = pmm_alloc();
+        if (!pd_virt) return;
+        uintptr_t pd_phys = VIRT_TO_PHYS(pd_virt);
+        pdpt[pdpt_index] = pd_phys | flags;
+        memset(pd_virt, 0, PAGE_SIZE);
+    }
+
+    uint64_t *pd = (uint64_t *)PHYS_TO_VIRT(pdpt[pdpt_index] & PAGE_MASK);
+    if (!(pd[pd_index] & PAGE_PRESENT)) {
+        void *pt_virt = pmm_alloc();
+        if (!pt_virt) return;
+        uintptr_t pt_phys = VIRT_TO_PHYS(pt_virt);
+        pd[pd_index] = pt_phys | flags;
+        memset(pt_virt, 0, PAGE_SIZE); 
+    }
+
+    uint64_t *pt = (uint64_t *)PHYS_TO_VIRT(pd[pd_index] & PAGE_MASK);
+    pt[pt_index] = (phys_addr & PAGE_MASK) | flags;
 }
 
 void *memcpy(void *restrict dest, const void *restrict src, size_t n) {
@@ -80,6 +114,7 @@ void pmm_init() {
     }
     total_pages = highest_addr / PAGE_SIZE;
     size_t bitmap_size = (total_pages + 7) / 8;
+    
     uintptr_t bitmap_phys = find_bitmap_location(bitmap_size);
     for (uintptr_t addr = bitmap_phys; addr < bitmap_phys + bitmap_size; addr += PAGE_SIZE) {
         map_page(addr, (uintptr_t)PHYS_TO_VIRT(addr), PAGE_PRESENT | PAGE_RW);

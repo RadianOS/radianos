@@ -10,5 +10,8 @@ void pmm_init(void);
 void *pmm_alloc(void);
 void pmm_free(void *ptr);
 void map_page(uintptr_t phys_addr, uintptr_t virt_addr, int flags);
+typedef uint64_t page_table_t[512];
+typedef page_table_t pml4_t;
+
 
 #endif
