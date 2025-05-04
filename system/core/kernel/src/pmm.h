@@ -9,5 +9,6 @@ extern size_t total_pages;
 void pmm_init(void);
 void *pmm_alloc(void);
 void pmm_free(void *ptr);
+void map_page(uintptr_t phys_addr, uintptr_t virt_addr, int flags);
 
 #endif

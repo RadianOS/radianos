@@ -37,6 +37,8 @@ run-x86_64: ovmf/ovmf-code-$(ARCH).fd $(IMAGE_NAME).iso
 		-cdrom $(IMAGE_NAME).iso \
 		-no-shutdown \
 		-no-reboot \
+		-s \
+		-S \
 		$(QEMUFLAGS)
 
 .PHONY: run-hdd-x86_64

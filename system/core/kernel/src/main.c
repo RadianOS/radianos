@@ -5,10 +5,6 @@
 #include "drivers/vga/flanterm.h"
 #include "drivers/vga/backends/fb.h"
 #include "pmm.h"
-// Set the base revision to 3, this is recommended as this is the latest
-// base revision described by the Limine boot protocol specification.
-// See specification for further info.
-
 
 size_t strlen(const char *str) {
     size_t len = 0;
@@ -17,18 +13,15 @@ size_t strlen(const char *str) {
     }
     return len;
 }
+
 __attribute__((used, section(".limine_requests")))
 volatile struct limine_memmap_request memmap_request = {
     .id = LIMINE_MEMMAP_REQUEST,
     .revision = 0
 };
+
 __attribute__((used, section(".limine_requests")))
 static volatile LIMINE_BASE_REVISION(3);
-
-// The Limine requests can be placed anywhere, but it is important that
-// the compiler does not optimise them away, so, usually, they should
-// be made volatile or equivalent, _and_ they should be accessed at least
-// once or marked as used with the "used" attribute as done here.
 
 __attribute__((used, section(".limine_requests")))
 static volatile struct limine_framebuffer_request framebuffer_request = {
@@ -36,26 +29,15 @@ static volatile struct limine_framebuffer_request framebuffer_request = {
     .revision = 0
 };
 
-// Finally, define the start and end markers for the Limine requests.
-// These can also be moved anywhere, to any .c file, as seen fit.
-
 __attribute__((used, section(".limine_requests_start")))
 static volatile LIMINE_REQUESTS_START_MARKER;
 
 __attribute__((used, section(".limine_requests_end")))
 static volatile LIMINE_REQUESTS_END_MARKER;
 
-// GCC and Clang reserve the right to generate calls to the following
-// 4 functions even if they are not directly called.
-// Implement them as the C specification mandates.
-// DO NOT remove or rename these functions, or stuff will eventually break!
-// They CAN be moved to a different .c file.
-
-
 void *memmove(void *dest, const void *src, size_t n) {
     uint8_t *pdest = (uint8_t *)dest;
     const uint8_t *psrc = (const uint8_t *)src;
-
     if (src > dest) {
         for (size_t i = 0; i < n; i++) {
             pdest[i] = psrc[i];
@@ -65,24 +47,20 @@ void *memmove(void *dest, const void *src, size_t n) {
             pdest[i-1] = psrc[i-1];
         }
     }
-
     return dest;
 }
 
 int memcmp(const void *s1, const void *s2, size_t n) {
     const uint8_t *p1 = (const uint8_t *)s1;
     const uint8_t *p2 = (const uint8_t *)s2;
-
     for (size_t i = 0; i < n; i++) {
         if (p1[i] != p2[i]) {
             return p1[i] < p2[i] ? -1 : 1;
         }
     }
-
     return 0;
 }
 
-// Halt and catch fire function.
 static void hcf(void) {
     for (;;) {
 #if defined (__x86_64__)
@@ -95,9 +73,51 @@ static void hcf(void) {
     }
 }
 
-// The following will be our kernel's entry point.
-// If renaming kmain() to something else, make sure to change the
-// linker script accordingly.
+void write_string(struct flanterm_context *ft_ctx, const char *str) {
+    flanterm_write(ft_ctx, str, strlen(str));
+}
+
+void write_hex(struct flanterm_context *ft_ctx, uintptr_t value) {
+    char hex_buffer[20];
+    const char hex_digits[] = "0123456789ABCDEF";
+    int index = 0;
+    if (value == 0) {
+        hex_buffer[index++] = '0';
+    } else {
+        while (value > 0) {
+            hex_buffer[index++] = hex_digits[value & 0xF];
+            value >>= 4;
+        }
+    }
+    for (int i = 0; i < index / 2; ++i) {
+        char temp = hex_buffer[i];
+        hex_buffer[i] = hex_buffer[index - 1 - i];
+        hex_buffer[index - 1 - i] = temp;
+    }
+    hex_buffer[index] = '\0';
+    write_string(ft_ctx, hex_buffer);
+}
+
+void write_number(struct flanterm_context *ft_ctx, size_t value) {
+    char num_buffer[20];
+    int index = 0;
+    if (value == 0) {
+        num_buffer[index++] = '0';
+    } else {
+        while (value > 0) {
+            num_buffer[index++] = (value % 10) + '0';
+            value /= 10;
+        }
+    }
+    for (int i = 0; i < index / 2; ++i) {
+        char temp = num_buffer[i];
+        num_buffer[i] = num_buffer[index - 1 - i];
+        num_buffer[index - 1 - i] = temp;
+    }
+    num_buffer[index] = '\0';
+    write_string(ft_ctx, num_buffer);
+}
+
 void kmain(void) {
     struct limine_framebuffer *framebuffer = framebuffer_request.response->framebuffers[0];
     struct flanterm_context *ft_ctx = flanterm_fb_init(
@@ -124,39 +144,47 @@ void kmain(void) {
     if (LIMINE_BASE_REVISION_SUPPORTED == false) {
         hcf();
     }
-
     if (memmap_request.response == NULL) {
-        flanterm_write(ft_ctx, "No memory map!\n", 15);
+        write_string(ft_ctx, "No memory map found!\n");
         hcf();
     }
-
     if (framebuffer_request.response == NULL || framebuffer_request.response->framebuffer_count < 1) {
-        flanterm_write(ft_ctx, "No framebuffer!\n", 16);
+        write_string(ft_ctx, "No framebuffer found!\n");
         hcf();
     }
-
-
-
     pmm_init();
-
-    // Debug: Check the total pages and bitmap address
     if (total_pages == 0) {
-        flanterm_write(ft_ctx, "PMM: Total pages is 0\n", 22);
+        write_string(ft_ctx, "PMM: Total pages is 0\n");
         hcf();
     }
-
     if (bitmap == NULL) {
-        flanterm_write(ft_ctx, "PMM: Bitmap is NULL\n", 20);
+        write_string(ft_ctx, "PMM: Bitmap is NULL\n");
         hcf();
-    }
-
-    void *page = pmm_alloc();
-
-    if (page) {
-        flanterm_write(ft_ctx, "\033[1;32mPMM alloc successful!\033[1;32m\n", 28);
     } else {
-        flanterm_write(ft_ctx, "\033[1;31m(KERNEL PANIC!!!!) PMM alloc failed!\033[1;31m\n", 45);
+        write_string(ft_ctx, "PMM: Bitmap size: ");
+        write_number(ft_ctx, (total_pages + 7) / 8);
+        write_string(ft_ctx, " bytes\n");
     }
-
+    write_string(ft_ctx, "Memory Map:\n");
+    for (size_t i = 0; i < memmap_request.response->entry_count; i++) {
+        struct limine_memmap_entry *entry = memmap_request.response->entries[i];
+        write_string(ft_ctx, "Entry ");
+        write_number(ft_ctx, i);
+        write_string(ft_ctx, ": Base: 0x");
+        write_hex(ft_ctx, entry->base);
+        write_string(ft_ctx, ", Length: 0x");
+        write_hex(ft_ctx, entry->length);
+        write_string(ft_ctx, ", Type: ");
+        write_number(ft_ctx, entry->type);
+        write_string(ft_ctx, "\n");
+    }
+    void *page = pmm_alloc();
+    if (page) {
+        write_string(ft_ctx, "PMM alloc successful! Page address: ");
+        write_hex(ft_ctx, (uintptr_t)page);
+        write_string(ft_ctx, "\n");
+    } else {
+        write_string(ft_ctx, "\033[1;31m(KERNEL PANIC!!!!) PMM alloc failed!\033[1;31m\n");
+    }
     hcf();
 }
