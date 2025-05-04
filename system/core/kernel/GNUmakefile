@@ -55,7 +55,9 @@ override CFLAGS += \
     -fno-stack-check \
     -fno-PIC \
     -ffunction-sections \
-    -fdata-sections
+    -fdata-sections \
+    -pedantic \
+    -fanalyzer
 
 # Internal C preprocessor flags that should not be changed by the user.
 override CPPFLAGS := \

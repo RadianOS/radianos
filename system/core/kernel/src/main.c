@@ -99,17 +99,6 @@ static void hcf(void) {
 // If renaming kmain() to something else, make sure to change the
 // linker script accordingly.
 void kmain(void) {
-        if (LIMINE_BASE_REVISION_SUPPORTED == false) {
-        hcf();
-    }
-
-    // Ensure we got a framebuffer.
-    if (framebuffer_request.response == NULL
-     || framebuffer_request.response->framebuffer_count < 1) {
-        hcf();
-    }
-
-    // Fetch the first framebuffer.
     struct limine_framebuffer *framebuffer = framebuffer_request.response->framebuffers[0];
     struct flanterm_context *ft_ctx = flanterm_fb_init(
         NULL,
@@ -132,15 +121,42 @@ void kmain(void) {
         0, 0,
         0
     );
+    if (LIMINE_BASE_REVISION_SUPPORTED == false) {
+        hcf();
+    }
 
-    pmm_init();
-    void *page = pmm_alloc();
-    if (page) {
-        flanterm_write(ft_ctx, "\e[1;32mPMM alloc successful!\e[1;32m\n", 28);
-    } else {
-        flanterm_write(ft_ctx, "\e[1;31m(KERNEL PANIC!!!!) PMM alloc failed!\e[1;31m\n", 45);
+    if (memmap_request.response == NULL) {
+        flanterm_write(ft_ctx, "No memory map!\n", 15);
+        hcf();
+    }
+
+    if (framebuffer_request.response == NULL || framebuffer_request.response->framebuffer_count < 1) {
+        flanterm_write(ft_ctx, "No framebuffer!\n", 16);
+        hcf();
     }
 
 
-   hcf();
+
+    pmm_init();
+
+    // Debug: Check the total pages and bitmap address
+    if (total_pages == 0) {
+        flanterm_write(ft_ctx, "PMM: Total pages is 0\n", 22);
+        hcf();
+    }
+
+    if (bitmap == NULL) {
+        flanterm_write(ft_ctx, "PMM: Bitmap is NULL\n", 20);
+        hcf();
+    }
+
+    void *page = pmm_alloc();
+
+    if (page) {
+        flanterm_write(ft_ctx, "\033[1;32mPMM alloc successful!\033[1;32m\n", 28);
+    } else {
+        flanterm_write(ft_ctx, "\033[1;31m(KERNEL PANIC!!!!) PMM alloc failed!\033[1;31m\n", 45);
+    }
+
+    hcf();
 }

@@ -4,8 +4,8 @@
 
 #define PAGE_SIZE 4096
 
-static uint8_t *bitmap = NULL;
-static size_t total_pages = 0;
+uint8_t *bitmap = NULL;
+size_t total_pages = 0;
 static uintptr_t highest_addr = 0;
 
 static inline void set_bit(size_t bit) {
@@ -42,17 +42,26 @@ uintptr_t find_bitmap_location(size_t size) {
 
     for (size_t i = 0; i < memmap_request.response->entry_count; i++) {
         struct limine_memmap_entry *entry = memmap_request.response->entries[i];
-        if (entry->type == LIMINE_MEMMAP_RESERVED || entry->type == LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE) {
-            uintptr_t start = entry->base;
-            uintptr_t end = entry->base + entry->length;
-            if (start % PAGE_SIZE != 0)
-                start = (start + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
-            if (end - start >= size)
-                return start;
+
+        if (entry->type != LIMINE_MEMMAP_USABLE) {
+            continue;
+        }
+
+        uintptr_t start = entry->base;
+        uintptr_t end = entry->base + entry->length;
+
+        if (start % PAGE_SIZE != 0) {
+            start = (start + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
+        }
+
+        if ((end - start) >= size) {
+            return start;
         }
     }
 
-    while (1) { __asm__("hlt"); }
+    while (1) {
+        __asm__("hlt");
+    }
 }
 
 void pmm_init() {
@@ -60,14 +69,18 @@ void pmm_init() {
         struct limine_memmap_entry *entry = memmap_request.response->entries[i];
         if (entry->type == LIMINE_MEMMAP_USABLE) {
             uintptr_t top = entry->base + entry->length;
-            if (top > highest_addr) highest_addr = top;
+            if (top > highest_addr) {
+                highest_addr = top;
+            }
         }
     }
 
     total_pages = highest_addr / PAGE_SIZE;
-    size_t bitmap_size = total_pages / 8;
+    size_t bitmap_size = (total_pages + 7) / 8;
 
-    bitmap = (uint8_t *)find_bitmap_location(bitmap_size);
+    uintptr_t bitmap_phys = find_bitmap_location(bitmap_size);
+    bitmap = (uint8_t *)bitmap_phys;
+
     memset(bitmap, 0xFF, bitmap_size);
 
     for (size_t i = 0; i < memmap_request.response->entry_count; i++) {
@@ -75,15 +88,15 @@ void pmm_init() {
         if (entry->type == LIMINE_MEMMAP_USABLE) {
             uintptr_t base = entry->base;
             uintptr_t end = entry->base + entry->length;
+
             for (uintptr_t addr = base; addr < end; addr += PAGE_SIZE) {
-                size_t index = addr / PAGE_SIZE;
-                clear_bit(index);
+                clear_bit(addr / PAGE_SIZE);
             }
         }
     }
 
-    for (uintptr_t addr = (uintptr_t)bitmap;
-         addr < (uintptr_t)(bitmap + bitmap_size);
+    for (uintptr_t addr = bitmap_phys;
+         addr < (bitmap_phys + bitmap_size);
          addr += PAGE_SIZE) {
         set_bit(addr / PAGE_SIZE);
     }
