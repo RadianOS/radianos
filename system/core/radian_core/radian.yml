@@ -1,0 +1,15 @@
+name: "radian_core"
+version: "0.1"
+radian_version: "1.0"
+kernel_entry: "system/core/radian_core/main.rs"
+api_version: "1.0"
+structure:
+  - /system/core/radian_core
+  - /mutable/logs
+features:
+  driver_model: unified
+  ipc: message-based
+  oskit_bootstrap: false
+custom:
+  runtime: "cap-runtime"
+  security: "capabilities + embedded policy"
