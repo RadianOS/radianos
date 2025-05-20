@@ -1,0 +1,4 @@
+system/target/
+.envrc
+.direnv/
+shell.nix
