@@ -1,13 +1,13 @@
 use super::cap::{CapSet, Capability};
 use super::ipc::{Message, MessageQueue};
 use super::policy::{Action, PolicyEngine};
-use super::scheduler::{RoundRobinScheduler, Scheduler};
+use crate::core::scheduler::{RoundRobinScheduler, Scheduler};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TaskState {
     Ready,
     Running,
-    Blocked,
+    Sleeping(u32),
     Terminated,
 }
 
@@ -76,7 +76,9 @@ impl TaskManager {
 
     pub fn run_next(&mut self) -> Option<&Task> {
         let selected = self.scheduler.select(&mut self.tasks)?;
-        selected.state = TaskState::Running;
+        unsafe {
+            (*selected).state = TaskState::Running;
+        }
         Some(selected)
     }
 
