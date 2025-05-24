@@ -29,6 +29,21 @@ impl Runtime {
                     if *ticks > 0 {
                         *ticks -= 1;
                         if *ticks == 0 {
+                            task.state    pub fn run(&mut self) {
+        println!("--- Radian Core Runtime Starting ---");
+
+        let mut tick: u32 = 0;
+
+        loop {
+            tick += 1;
+            println!("\nTick {}", tick);
+
+            // Handle sleeping tasks
+            for task in self.task_manager.tasks.iter_mut() {
+                if let TaskState::Sleeping(ref mut ticks) = task.state {
+                    if *ticks > 0 {
+                        *ticks -= 1;
+                        if *ticks == 0 {
                             task.state = TaskState::Ready;
                             println!("↻ Waking up task {}", task.name);
                         }
@@ -36,13 +51,15 @@ impl Runtime {
                 }
             }
 
-            let task_opt = self.scheduler.select(&mut self.task_manager.tasks);
+            // Select a task — scope ends here, so borrow ends
+            let selected_task_ptr = self.scheduler.select(&mut self.task_manager.tasks);
 
-            match task_opt {
-                Some(task_ptr) => {
-                    let task = unsafe { &mut *task_ptr };
+            // SAFETY: We trust that select() returns a valid mutable pointer from the same vec
+            let task = unsafe { selected_task_ptr.map(|ptr| &mut *ptr) };
+
+            match task {
+                Some(task) => {
                     println!("→ Running task: {} (id: {})", task.name, task.id);
-
                     task.state = TaskState::Running;
                     self.simulate_task(task);
 
@@ -54,6 +71,33 @@ impl Runtime {
                     println!("⏸ No ready tasks. System idle.");
                     break;
                 }
+            }
+        }
+
+        println!("\n--- Radian Core Runtime Halted ---");
+    } = TaskState::Ready;
+                            println!("↻ Waking up task {}", task.name);
+                        }
+                    }
+                }
+            }
+
+            let task_ptr = {
+                let tasks = &mut self.task_manager.tasks;
+                self.scheduler.select(tasks)
+            };
+
+            if let Some(ptr) = task_ptr {
+                let task = unsafe { &mut *ptr };
+                println!("→ Running task: {} (id: {})", task.name, task.id);
+                task.state = TaskState::Running;
+                self.simulate_task(task);
+                if let TaskState::Terminated = task.state {
+                    println!("✖ Task {} has terminated.", task.name);
+                }
+            } else {
+                println!("⏸ No ready tasks. System idle.");
+                break;
             }
         }
 

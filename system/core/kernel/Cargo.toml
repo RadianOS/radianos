@@ -1,0 +1,11 @@
+[package]
+name = "kernel"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+cortex-m = "0.7.7"
+cortex-m-rt = "0.7.5"
+panic-halt = "1.0.0"
+rtt-target = "0.6.1"
+stm32f4xx-hal = {version = "0.22.1", features = ["stm32f407"]}

@@ -1,7 +1,8 @@
 use crate::core::task::{Task, TaskState};
 
 pub trait Scheduler {
-    fn select(&self, tasks: &mut Vec<Task>) -> Option<*mut Task>;
+    fn select<'a>(&self, tasks: &'a mut Vec<Task>) -> Option<&'a mut Task>; // thank you andreashgk
+    // :333
 }
 
 pub struct RoundRobinScheduler;
@@ -13,10 +14,10 @@ impl RoundRobinScheduler {
 }
 
 impl Scheduler for RoundRobinScheduler {
-    fn select(&self, tasks: &mut Vec<Task>) -> Option<*mut Task> {
+    fn select<'a>(&self, tasks: &'a mut Vec<Task>) -> Option<&'a mut Task> {
         for task in tasks.iter_mut() {
             if let TaskState::Ready = task.state {
-                return Some(task as *mut Task);
+                return Some(task as &mut Task);
             }
         }
         None

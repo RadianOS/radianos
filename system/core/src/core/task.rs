@@ -76,9 +76,9 @@ impl TaskManager {
 
     pub fn run_next(&mut self) -> Option<&Task> {
         let selected = self.scheduler.select(&mut self.tasks)?;
-        unsafe {
-            (*selected).state = TaskState::Running;
-        }
+
+        (*selected).state = TaskState::Running;
+
         Some(selected)
     }
 

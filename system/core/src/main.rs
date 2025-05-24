@@ -49,7 +49,7 @@ fn main() {
         allow: true,
     });
 
-    // Test the memory write operation near bounds
+    // Test the memory with bounds or something idk
     match mem.write(1000, &[1, 2, 3, 4]) {
         Ok(_) => println!("Memory write success."),
         Err(e) => println!("Memory write failed: {}", e),

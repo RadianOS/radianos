@@ -5,3 +5,4 @@ edition = "2024"
 
 [dependencies]
 dirs = "5"
+embedded-hal = "1.0.0"
