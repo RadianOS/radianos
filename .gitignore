@@ -2,3 +2,6 @@ system/target/
 .envrc
 .direnv/
 shell.nix
+
+**/target
+**/Cargo.lock
