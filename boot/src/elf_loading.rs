@@ -5,8 +5,8 @@ use crate::files::read_file;
 
 const KERNEL_LOAD_BASE: u64 = 0x1_0000_0000; // 4GB
 
-pub fn load_kernel(_file_path: &str) -> (usize, unsafe extern "C" fn() -> !) {
-    let bytes = read_file("\\EFI\\BOOT\\boykernel").unwrap();
+pub fn load_kernel(file_path: &str) -> (usize, unsafe extern "C" fn() -> !) {
+    let bytes = read_file(file_path).unwrap();
     let elf = ElfFile::new(&bytes).expect("Failed to parse ELF file");
 
     for ph in elf.program_iter() {
