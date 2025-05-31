@@ -3,6 +3,15 @@ name = "boot"
 version = "0.1.0"
 edition = "2024"
 
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
+
 [dependencies]
 log = "0.4.27"
-uefi = { version = "0.35.0", features = ["logger", "panic_handler"] }
+panic-abort = "0.3.2"
+uefi = { version = "0.35.0", features = ["alloc", "global_allocator", "logger", "panic_handler"] }
+x86_64 = "0.15.2"
+xmas-elf = "0.10.0"
