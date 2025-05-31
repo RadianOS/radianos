@@ -3,5 +3,4 @@ system/target/
 .direnv/
 shell.nix
 
-**/target
-**/Cargo.lock
+target
