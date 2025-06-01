@@ -22,11 +22,13 @@ fn main() -> Status {
     output.clear().expect("Failed to clear screen");
 
     info!("Booting Radian OS...");
-    // output.clear().expect("Failed to clear screen");
+    
+
     boot_system();
 
     Status::SUCCESS
 }
+
 
 pub fn boot_system() {
     // This will fail because we don't have a kernel yet lol
