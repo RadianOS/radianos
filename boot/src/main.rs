@@ -20,6 +20,7 @@ fn main() -> Status {
     let handle = get_handle_for_protocol::<Output>().unwrap();
     let mut output = open_protocol_exclusive::<Output>(handle).unwrap();
     output.clear().expect("Failed to clear screen");
+
     info!("Booting Radian OS...");
     // output.clear().expect("Failed to clear screen");
     boot_system();

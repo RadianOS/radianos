@@ -1,7 +1,8 @@
 extern crate alloc;
 
-use core::fmt::{self, Write};
 use crate::serial::serial_write_str;
+use core::fmt::{self, Write};
+
 
 struct SerialWriter;
 
@@ -26,7 +27,9 @@ macro_rules! log {
 #[macro_export]
 macro_rules! info {
     ($($arg:tt)*) => {{
-        $crate::serial::serial_write_str("[INFO] ");
+        use ansi_rgb::{Background, green};
+        let tag = ::alloc::string::String::from("[INFO] ").bg(green()).to_string();
+        $crate::serial::serial_write_str(&tag);
         $crate::log::log_write_fmt(core::format_args!($($arg)*));
         $crate::serial::serial_write_str("\n");
     }};
@@ -35,8 +38,13 @@ macro_rules! info {
 #[macro_export]
 macro_rules! error {
     ($($arg:tt)*) => {{
-        $crate::serial::serial_write_str("[ERROR] ");
+        use ansi_rgb::{Background, red};
+        let tag = ::alloc::string::String::from("[ERROR] ").bg(red()).to_string();
+        $crate::serial::serial_write_str(&tag);
         $crate::log::log_write_fmt(core::format_args!($($arg)*));
         $crate::serial::serial_write_str("\n");
     }};
 }
+
+
+
