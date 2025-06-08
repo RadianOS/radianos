@@ -4,7 +4,6 @@
 
 use core::str;
 
-pub mod caps;
 pub mod policy;
 pub mod pmm;
 pub mod containers;
@@ -158,15 +157,17 @@ fn rust_start() {
     pmm::Manager::init();
 
     let db = db::Database::get_mut();
-    let _ = caps::Capability::new().with(caps::Capability::WRITE_LOG);
     kprint!("creating worker #0\r\n");
     let start_task = policy::Action::default().with(policy::Action::START_TASK);
-    db.workers.push(db::Worker::new());
+    db.workers.push(db::Worker::new()); //kernel worker
+    policy::PolicyEngine::add_rule(db, policy::PolicyRule::default()); //default rule
     policy::PolicyEngine::add_rule(db, policy::PolicyRule{
         subject: db.find_from_str("worker_0").unwrap(),
-        allowed: start_task
+        allowed: start_task,
+        capabilities: policy::Capability::new().with(policy::Capability::WRITE_LOG),
     });
-    let res = policy::PolicyEngine::check(db, db.find_from_str("worker_0").unwrap(), start_task);
+
+    let res = policy::PolicyEngine::check_action(db, db.find_from_str("worker_0").unwrap(), start_task);
     kprint!("check policy? {}\r\n", res);
     vfs::Manager::init(db);
 
@@ -191,6 +192,7 @@ fn rust_start() {
     kprint!("kernel console, type <help>?\r\n");
     let mut mean_counter = 0;
     let mut current_node = vfs::NodeHandle::default();
+    let mut current_actor = db.find_from_str("worker_0").unwrap();
     loop {
         let mut line = [0u8; 128];
         let mut index = 0;
@@ -206,7 +208,36 @@ fn rust_start() {
                     kprint!("* tree - list ALL, and i mean ALL nodes\r\n");
                     kprint!("* mean - say something mean\r\n");
                     kprint!("* at - print current node\r\n");
-                    kprint!("* cd - change node\r\n");
+                    kprint!("* cd <name> - change node\r\n");
+                    kprint!("* write <data> - write line at current node\r\n");
+                    kprint!("* rule_remove <index> - remove policy rule\r\n");
+                    kprint!("* rule_list - lists all policy rules\r\n");
+                } else if s.starts_with("rule_list") {
+                    policy::PolicyEngine::for_each_policy_rule(db, |rule| {
+                        kprint!("- {:?}\r\n", rule);
+                    });
+                } else if s.starts_with("rule_remove") {
+                    let mut split = s.split_whitespace();
+                    split.next();
+                    if let Some(index) = split.next() {
+                        if let Ok(index) = index.parse::<u16>() {
+                            policy::PolicyEngine::remove_rule(db, policy::PolicyRuleHandle(index));
+                        } else {
+                            kprint!("invalid number\r\n");
+                        }
+                    } else {
+                        kprint!("missing arg\r\n");
+                    }
+                } else if s.starts_with("write") {
+                    let mut split = s.split_whitespace();
+                    split.next();
+                    if let Some(name) = split.next() {
+                        let handle = vfs::Manager::get_node(db, current_node).get_provider();
+                        let res = vfs::Manager::invoke_provider_write(db, *handle, current_actor, name.as_bytes());
+                        kprint!("\r\n{:?}\r\n", res);
+                    } else {
+                        kprint!("missing arg\r\n");
+                    }
                 } else if s.starts_with("tree") {
                     let print_node = |level, handle| {
                         let node = vfs::Manager::get_node(db, handle);
@@ -256,12 +287,14 @@ fn rust_start() {
                             if let Some(handle) = vfs::Manager::find_children(db, current_node, name) {
                                 current_node = handle;
                             } else {
-                                kprint!("{} not found", name);
+                                kprint!("{} not found\r\n", name);
                             }
                         }
+                    } else {
+                        kprint!("missing arg\r\n");
                     }
                 } else if s.starts_with("mean") {
-                    kprint!("{}", [
+                    kprint!("{}\r\n", [
                         "go away\r\n",
                         "иди нахуй\r\n",
                         "vmovntdqa without the ntdqa\r\n",

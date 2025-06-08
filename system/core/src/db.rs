@@ -1,6 +1,6 @@
 use crate::{policy, pmm, vfs};
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ObjectHandle {
     id: u8,
     type_: u8,
@@ -30,21 +30,12 @@ impl Default for Worker {
     }
 }
 
-pub struct Transaction {
-    data: pmm::Handle,
-}
-
-pub struct Provider {
-    
-}
-
 crate::dense_soa_generic!(
     struct Database;
     workers: Worker,
-    logged_transactions: Transaction,
-    pending_transactions: Transaction,
     policy_rule: policy::PolicyRule,
     vfs_nodes: vfs::Node,
+    vfs_providers: vfs::Provider,
 );
 static mut GLOBAL_DATABASE: [u8; core::mem::size_of::<Database>()] = [0u8; core::mem::size_of::<Database>()];
 
