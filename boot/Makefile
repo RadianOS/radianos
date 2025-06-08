@@ -1,8 +1,16 @@
 # Variables
-#OVMF_CODE := $(OVML_PATH)/OVMF_CODE.fd #Arch
-#OVMF_VARS := $(OVM_PATH)/OVMF_VARS.fd #Arch
-OVMF_CODE := /usr/share/OVMF/x64/OVMF_CODE.4m.fd
-OVMF_VARS := /usr/share/OVMF/x64/OVMF_VARS.4m.fd
+ifeq ($(OVMF_CODE),)
+OVMF_CODE_1 := /usr/share/OVMF/x64/OVMF_CODE.4m.fd
+OVMF_CODE_2 := $(OVML_PATH)/OVMF_CODE.fd #Arch
+OVMF_CODE := $(or $(and $(wildcard $(OVMF_CODE_1)),$(OVMF_CODE_1)),$(OVMF_CODE_2))
+endif
+ifeq ($(OVMF_VARS),)
+OVMF_VARS_1 := /usr/share/OVMF/x64/OVMF_VARS.4m.fd
+OVMF_VARS_2 := $(OVM_PATH)/OVMF_VARS.fd #Arch
+OVMF_VARS := $(or $(and $(wildcard $(OVMF_VARS_1)),$(OVMF_VARS_1)),$(OVMF_VARS_2))
+endif
+# These should be set to the full path in your .zshrc/bashrc/shrc profile, not in the makefile
+
 FAT_IMG := fat.img
 ISO_FILE := radianos.iso
 # Default to debug unless RELEASE=1 is set

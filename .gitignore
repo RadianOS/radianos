@@ -9,3 +9,4 @@ boot/iso/
 boot/esp/
 *.img
 *.iso
+.idea

@@ -1,1 +1,0 @@
-# RadianOS kernel
