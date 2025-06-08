@@ -1,7 +1,10 @@
+/*
 use crate::core::memory::MemoryRegion;
 use core::runtime::Runtime;
 use core::scheduler::RoundRobinScheduler;
 mod core;
+
+pub mod cap;
 
 use core::cap::*;
 use core::ipc::*;
@@ -78,4 +81,9 @@ fn main() {
     let scheduler = Box::new(RoundRobinScheduler::new());
     let mut runtime = Runtime::new(scheduler, tm);
     runtime.run();
+}
+*/
+
+fn main() -> ! {
+    loop {}
 }

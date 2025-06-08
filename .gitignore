@@ -4,3 +4,8 @@ system/target/
 shell.nix
 
 target
+
+boot/iso/
+boot/esp/
+*.img
+*.iso

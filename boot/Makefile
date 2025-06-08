@@ -1,14 +1,14 @@
 # Variables
-OVMF_CODE = $(OVML_PATH)/OVMF_CODE.fd #Arch
-OVMF_VARS = $(OVM_PATH)/OVMF_VARS.fd #Arch
-# OVMF_CODE = /usr/share/OVMF/OVMF_CODE_4M.fd
-# OVMF_VARS = /usr/share/OVMF/OVMF_VARS_4M.fd
-FAT_IMG = fat.img
-ISO_FILE = radianos.iso
+#OVMF_CODE := $(OVML_PATH)/OVMF_CODE.fd #Arch
+#OVMF_VARS := $(OVM_PATH)/OVMF_VARS.fd #Arch
+OVMF_CODE := /usr/share/OVMF/x64/OVMF_CODE.4m.fd
+OVMF_VARS := /usr/share/OVMF/x64/OVMF_VARS.4m.fd
+FAT_IMG := fat.img
+ISO_FILE := radianos.iso
 # Default to debug unless RELEASE=1 is set
 BOOTLOADER_BUILD_DIR := $(if $(RELEASE),release,debug)
-BOOTLOADER_PATH = $(CURDIR)/../target/x86_64-unknown-uefi/$(BOOTLOADER_BUILD_DIR)/boot.efi
-ESP_DIR = esp/efi/boot
+BOOTLOADER_PATH := $(CURDIR)/../target/x86_64-unknown-uefi/$(BOOTLOADER_BUILD_DIR)/boot.efi
+ESP_DIR := esp/efi/boot
 
 .PHONY: run clean build-kernel build-bootloader check-artifacts esp fat iso qemu rust-clean
 

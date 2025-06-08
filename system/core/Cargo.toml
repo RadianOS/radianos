@@ -1,3 +1,5 @@
+cargo-features = ["edition2024"]
+
 [package]
 name = "core"
 version = "0.1.0"
@@ -6,3 +8,9 @@ edition = "2024"
 [dependencies]
 dirs = "5"
 embedded-hal = "1.0.0"
+
+[profile.dev]
+panic = "abort"
+
+[profile.release]
+panic = "abort"
