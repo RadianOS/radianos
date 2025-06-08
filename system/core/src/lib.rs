@@ -1,5 +1,6 @@
 #![no_std]
 #![feature(str_from_raw_parts)]
+#![feature(lang_items)]
 
 use core::str;
 
@@ -120,3 +121,6 @@ impl DebugSerial {
         }
     }
 }
+
+#[lang = "eh_personality"]
+extern "C" fn eh_personality() {}

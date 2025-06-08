@@ -35,7 +35,7 @@ build-kernel:
 	RUSTFLAGS='-C link-arg=-Tsystem/drivers/src/kernel.ld -C relocation-model=static' cargo build $(if $(RELEASE),--release,) --target x86_64-unknown-none --bin kernel
 
 build-drivers:
-	RUSTFLAGS='-C link-arg=-Tsystem/drivers/src/driver.ld -C relocation-model=pic' cargo build $(if $(RELEASE),--release,) --target x86_64-unknown-none --bin ata
+	RUSTFLAGS='-C link-arg=-Tsystem/drivers/src/driver.ld -C relocation-model=pic' cargo build $(if $(RELEASE),--release,) --target x86_64-unknown-linux-gnu --bin ata
 
 check-artifacts: build-drivers build-kernel build-bootloader
 	@if [ ! -f $(BOOTLOADER_PATH) ]; then echo "Error: boot.efi not found!"; exit 1; fi
