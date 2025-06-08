@@ -1,4 +1,4 @@
-use crate::{policy, pmm, vfs};
+use crate::{containers::StaticVec, pmm, policy, smp, vfs};
 
 /// "Fat pointer" - only use if you absolutely dont know the source of id
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -31,13 +31,13 @@ impl Default for Worker {
     }
 }
 
-crate::dense_soa_generic!(
-    struct Database;
-    workers: Worker,
-    policy_rule: policy::PolicyRule,
-    vfs_nodes: vfs::Node,
-    vfs_providers: vfs::Provider,
-);
+pub struct Database {
+    pub workers: StaticVec<Worker, 64>,
+    pub policy_rule: StaticVec<policy::PolicyRule, 128>,
+    pub vfs_nodes: StaticVec<vfs::Node, 128>,
+    pub vfs_providers: StaticVec<vfs::Provider, 32>,
+    pub page_directory: [pmm::Handle; smp::MAX_CORES],
+}
 static mut GLOBAL_DATABASE: [u8; core::mem::size_of::<Database>()] = [0u8; core::mem::size_of::<Database>()];
 
 impl Database {

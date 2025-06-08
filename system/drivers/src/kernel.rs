@@ -3,7 +3,7 @@
 #![feature(str_from_raw_parts)]
 
 use core::str;
-use radian_core::prelude::*;
+use radian_core::{prelude::*, smp, vmm};
 
 /// Do not remove these or bootloader fails due to 0-sized section, thanks
 #[allow(dead_code)]
@@ -52,6 +52,9 @@ fn rust_start() {
     pmm::Manager::init();
 
     let db = db::Database::get_mut();
+    smp::Manager::init();
+    vmm::Manager::init(db);
+
     kprint!("creating worker #0\r\n");
     let start_task = policy::Action::default().with(policy::Action::START_TASK);
     db.workers.push(db::Worker::new()); //kernel worker

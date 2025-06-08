@@ -12,6 +12,8 @@ pub mod containers;
 pub mod db;
 pub mod vfs;
 pub mod prelude;
+pub mod vmm;
+pub mod smp;
 
 #[macro_export]
 macro_rules! dense_bitfield {
@@ -58,12 +60,9 @@ macro_rules! tagged_dense_bitfield {
 }
 
 #[macro_export]
-macro_rules! dense_soa_generic {
-    (struct $name:ident; $($f_name:ident: $f_repr:ty,)*) => {
-        #[repr(C)]
-        pub struct $name {
-            $(pub $f_name: $crate::containers::StaticVec<$f_repr, 64>,)*
-        }
+macro_rules! dense_soa_generic_helper {
+    (Monotonic $name:ident $repr:ty) => {
+        pub $name: $crate::containers::StaticVec<$repr, 64>,
     }
 }
 
