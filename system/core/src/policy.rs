@@ -1,25 +1,6 @@
-// // Define actions that subjects might want to perform.
-// #[derive(Debug)]
-// pub enum Action {
-//     StartTask,
-//     AccessDevice(String), // Accessing a named device
-//     WriteTo(String),      // Writing to a specific target
-// }
-
-// // Defines a rule mapping subject to allowed/denied action.
-// #[derive(Debug)]
-// pub struct PolicyRule {
-//     subject: String,  // Actor or process name
-//     action: Action,   // Attempted action
-//     allow: bool,      // Whether the action is permitted
-// }
-
-// // Policy engine that holds all rules and evaluates them.
-// pub struct PolicyEngine {
-//     rules: Vec<PolicyRule>,
-// }
-
 use crate::tagged_dense_bitfield;
+use crate::dense_soa_generic;
+use crate::db;
 
 tagged_dense_bitfield!(
     Action u16
@@ -29,4 +10,27 @@ tagged_dense_bitfield!(
     WRITE_TO = 0x04,
 );
 
+pub struct PolicyRule {
+    pub subject: db::Handle,
+    pub allowed: Action
+}
 
+/// Policy engine that holds all rules and evaluates them. (zero sized)
+pub struct PolicyEngine;
+impl PolicyEngine {
+    pub fn new() -> Self {
+        Self{}
+    }
+    pub fn add_rule(db: &mut db::Database, rule: PolicyRule) {
+        db.policy_rule.push(rule);
+    }
+    pub fn check(db: &db::Database, subject: db::Handle, what: Action) -> bool {
+        for i in 0..db.policy_rule.len() {
+            let r = db.policy_rule.get(i).unwrap();
+            if r.subject == subject {
+                return r.allowed.contains(what);
+            }
+        }
+        false
+    }
+}

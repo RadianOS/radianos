@@ -2,20 +2,22 @@
 #![no_main]
 #![feature(naked_functions)]
 
-pub mod cap;
+pub mod caps;
 pub mod policy;
 pub mod pmm;
+pub mod containers;
+pub mod db;
 
 #[macro_export]
 macro_rules! dense_bitfield {
     ($name:ident $repr:ident $($cap:ident = $value:expr,)*) => {
-        #[repr(C, packed)]
+        #[repr(C)]
         #[derive(Default, Debug, Clone, Copy, Eq, PartialEq, Hash)]
         pub struct $name($repr);
         impl $name {
-            $(const $cap: $repr = $value;)*
-            pub fn contains(self, c: $repr) -> bool {
-                (self.0 & c) == c
+            $(pub const $cap: $repr = $value;)*
+            pub fn contains(self, c: Self) -> bool {
+                (self.0 & c.0) == c.0
             }
             pub fn with(self, c: $repr) -> Self {
                 Self(self.0 | c)
@@ -27,15 +29,15 @@ macro_rules! dense_bitfield {
 #[macro_export]
 macro_rules! tagged_dense_bitfield {
     ($name:ident $repr:ident $tag:ident = $tag_mask:expr, $($cap:ident = $value:expr,)*) => {
-        #[repr(C, packed)]
+        #[repr(C)]
         #[derive(Default, Debug, Clone, Copy, Eq, PartialEq, Hash)]
         pub struct $name($repr);
         impl $name {
-            $(const $cap: $repr = $value;)*
+            $(pub const $cap: $repr = $value;)*
             const $tag: $repr = $tag_mask;
             const TAG_SHIFT: $repr = 8;
-            pub fn contains(self, c: $repr) -> bool {
-                (self.0 & c) == c
+            pub fn contains(self, c: Self) -> bool {
+                (self.0 & c.0) == c.0
             }
             pub fn with(self, c: $repr) -> Self {
                 Self(self.0 | c)
@@ -52,10 +54,10 @@ macro_rules! tagged_dense_bitfield {
 
 #[macro_export]
 macro_rules! dense_soa_generic {
-    ($name:ident $($f_name:ident: $f_repr:ident)*) => {
-        #[repr(C, packed)]
-        struct $name {
-            $($f_name: DenseBlock<$f_repr>,)*
+    (struct $name:ident; $($f_name:ident: $f_repr:ty,)*) => {
+        #[repr(C)]
+        pub struct $name {
+            $(pub $f_name: crate::containers::StaticVec<$f_repr, 64>,)*
         }
     }
 }
@@ -75,26 +77,28 @@ impl core::fmt::Write for DebugSerial {
         Ok(())
     }
 }
-macro_rules! print {
-    ($($args:tt)*) => {
+
+#[macro_export]
+macro_rules! kprint {
+    ($($args:tt)*) => ({
         use core::fmt::Write;
-        let _ = write!(DebugSerial{}, $($args)*);
-    };
+        let _ = write!(crate::DebugSerial{}, $($args)*);
+    });
 }
 
-#[repr(C, packed)]
+#[repr(C)]
 pub struct PageHandle(u16);
 
-#[repr(C, packed)]
+#[repr(C)]
 pub struct DenseBlock {
     page_handle: PageHandle,
 }
 
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
-    //if let Some(loc) = info.location() {
-        //kprint!("{}:{}: {}\r\n", loc.file(), loc.line(), info.message());
-    //}
+    if let Some(loc) = info.location() {
+        kprint!("{}:{}: {}\r\n", loc.file(), loc.line(), info.message());
+    }
     abort();
 }
 
@@ -107,6 +111,7 @@ extern "C" fn abort() -> ! {
     }
 }
 
+/// Do not remove these or bootloader fails due to 0-sized section, thanks
 static RODATA_DUMMY: u8 = 255;
 static mut DATA_DUMMY: u8 = 156;
 static mut BSS_DUMMY: u8 = 0;
@@ -128,10 +133,17 @@ unsafe extern "C" fn naked_start() {
 
 #[unsafe(no_mangle)]
 fn rust_start() {
-    print!("hello rust world!\r\n");
-    loop {
-        unsafe {
-            core::arch::asm!("pause");
-        }
-    }
+    let db = db::Database::get_mut();
+    let _ = caps::Capability::new().with(caps::Capability::WRITE_LOG);
+    kprint!("creating worker #0\r\n");
+    let start_task = policy::Action::default().with(policy::Action::START_TASK);
+    let _ = db.workers.push(db::Worker::new());
+    policy::PolicyEngine::add_rule(db, policy::PolicyRule{
+        subject: db.find_from_str("worker_0").unwrap(),
+        allowed: start_task
+    });
+    let res = policy::PolicyEngine::check(db, db.find_from_str("worker_0").unwrap(), start_task);
+    kprint!("check policy? {}\r\n", res);
+    kprint!("hello rust world!\r\n");
+    unreachable!();
 }

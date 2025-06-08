@@ -1,3 +1,5 @@
+use crate::kprint;
+
 unsafe extern {
     unsafe static mut HEAP_START: u8;
     unsafe static HEAP_END: u8;
@@ -32,7 +34,7 @@ impl Manager {
         unsafe {
             let heap = Self::get_heap_mut();
             let bytes = Self::get_num_pages() / BITMAP_BITS * BITMAP_BYTES;
-            //kprintln!("[pmm] {}, b={}", Self::get_num_pages(), bytes);
+            kprint!("[pmm] {}, b={}", Self::get_num_pages(), bytes);
             heap.write_bytes(0, bytes);
             heap.add(0).write(1 << 0);
         }
