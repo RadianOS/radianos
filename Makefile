@@ -14,11 +14,17 @@ endif
 FAT_IMG := fat.img
 ISO_FILE := radianos.iso
 # Default to debug unless RELEASE=1 is set
-BOOTLOADER_BUILD_DIR := $(if $(RELEASE),release,debug)
-BOOTLOADER_PATH := $(CURDIR)/target/x86_64-unknown-uefi/$(BOOTLOADER_BUILD_DIR)/boot.efi
+BOOTLOADER_BUILD_DIR := $(CURDIR)/target/x86_64-unknown-uefi/$(if $(RELEASE),release,debug)
+BOOTLOADER_PATH := $(BOOTLOADER_BUILD_DIR)/boot.efi
 
-KERNEL_BUILD_DIR := $(if $(RELEASE),release,debug)
-KERNEL_PATH := $(CURDIR)/target/x86_64-unknown-none/$(KERNEL_BUILD_DIR)/kernel
+KERNEL_BUILD_DIR := $(CURDIR)/target/x86_64-unknown-none/$(if $(RELEASE),release,debug)
+KERNEL_PATH := $(KERNEL_BUILD_DIR)/kernel
+
+RUSTC_FLAGS := \
+	-C opt-level=3 \
+	-L $(KERNEL_BUILD_DIR)/deps \
+	--crate-type staticlib \
+	--target x86_64-unknown-none
 
 ESP_DIR := esp/efi/boot
 
@@ -35,7 +41,7 @@ build-kernel:
 	RUSTFLAGS='-C link-arg=-Tsystem/drivers/src/kernel.ld -C relocation-model=static' cargo build $(if $(RELEASE),--release,) --target x86_64-unknown-none --bin kernel
 
 build-drivers:
-	RUSTFLAGS='-C link-arg=-Tsystem/drivers/src/driver.ld -C relocation-model=pic' cargo build $(if $(RELEASE),--release,) --target x86_64-unknown-linux-gnu --bin ata
+	RUSTFLAGS='-C link-arg=-Tsystem/drivers/src/driver.ld -C relocation-model=pic' cargo build $(if $(RELEASE),--release,) --target x86_64-unknown-none --bin ata
 
 check-artifacts: build-drivers build-kernel build-bootloader
 	@if [ ! -f $(BOOTLOADER_PATH) ]; then echo "Error: boot.efi not found!"; exit 1; fi
