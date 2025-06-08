@@ -35,28 +35,23 @@ impl Manager {
         r
     }
 
-    pub fn new_address_space() -> AddressSpaceHandle {
-        AddressSpaceHandle(1)
+    pub fn new_address_space(db: &mut db::Database, pgtable: pmm::Handle) -> AddressSpaceHandle {
+        db.aspace_pgtable.push(pgtable);
+        AddressSpaceHandle((db.aspace_pgtable.len() - 1) as u16)
     }
 
     pub fn map(db: &mut db::Database, aspace: AddressSpaceHandle, mut paddr: u64, mut vaddr: u64, count: usize, flags: u64) {
-        for i in 0..count {
+        for _ in 0..count {
             let index = [
                 ((vaddr >> 39) & Page::FLAG_MASK) as usize,
                 ((vaddr >> 30) & Page::FLAG_MASK) as usize,
                 ((vaddr >> 21) & Page::FLAG_MASK) as usize,
                 ((vaddr >> 12) & Page::FLAG_MASK) as usize
             ];
-            kprint!("\r\nv={vaddr:016x}::p={paddr:016x}");
-            let mut table = (if db.aspace_pgtable[aspace.0 as usize] == pmm::Handle::default() {
-                let new_page = pmm::Manager::alloc_page_zeroed();
-                db.aspace_pgtable[aspace.0 as usize] = new_page;
-                new_page
-            } else {
-                db.aspace_pgtable[aspace.0 as usize]
-            }).get_mut() as *mut Page;
+            //kprint!("\r\nv={vaddr:016x}::p={paddr:016x}");
+            let mut table = db.aspace_pgtable[aspace.0 as usize].get_mut() as *mut Page;
             for i in 0..index.len() {
-                kprint!("walk #{:04x} ", index[i]);
+                //kprint!("walk #{:04x} ", index[i]);
                 unsafe {
                     let entry = table.add(index[i] as usize);
                     if i == index.len() - 1 {
@@ -66,7 +61,7 @@ impl Manager {
                             ((*entry).0 & !Page::FLAG_MASK) as *mut Page
                         } else {
                             let pd_addr = pmm::Manager::alloc_page_zeroed().get() as u64;
-                            kprint!("alloc new addr {pd_addr:016x} ");
+                            //kprint!("alloc new addr {pd_addr:016x} ");
                             assert_eq!(pd_addr & Page::FLAG_MASK, 0); //page aligned please
                             *entry = Page(pd_addr | flags);
                             pd_addr as *mut Page

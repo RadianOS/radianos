@@ -52,6 +52,18 @@ unsafe extern "C" {
     unsafe static KERNEL_END: u8;
 }
 
+fn parse_literal(a: &str) -> Option<usize> {
+    if a.starts_with("0x") {
+        usize::from_str_radix(a.strip_prefix("0x").unwrap(), 16).ok()
+    } else if a.starts_with("0h") {
+        usize::from_str_radix(a.strip_prefix("0h").unwrap(), 16).ok()
+    } else if a.starts_with("0b") {
+        usize::from_str_radix(a.strip_prefix("0b").unwrap(), 2).ok()
+    } else {
+        a.parse::<usize>().ok()
+    }
+}
+
 #[unsafe(no_mangle)]
 fn rust_start() {
     pmm::Manager::init();
@@ -62,13 +74,11 @@ fn rust_start() {
 
     // Linear map the kernel into the process
     db.aspace_pgtable.push(pmm::Handle::default()); //kernel space assumed :)
-    {
-        let aspace = vmm::Manager::new_address_space();
-        let start_addr = unsafe { (&KERNEL_START) as *const _ as u64 };
-        let end_addr = unsafe { (&KERNEL_END) as *const _ as u64 };
-        vmm::Manager::map(db, aspace, 0, 0, 512 + 1, vmm::Page::PRESENT | vmm::Page::READ_WRITE);
-        vmm::Manager::evil_function_do_not_call(db, aspace);
-    }
+    let kernel_aspace = vmm::Manager::new_address_space(db, pmm::Manager::alloc_page_zeroed());
+    let start_addr = unsafe { (&KERNEL_START) as *const _ as u64 };
+    let end_addr = unsafe { (&KERNEL_END) as *const _ as u64 };
+    vmm::Manager::map(db, kernel_aspace, 0, 0, 512 + 1, vmm::Page::PRESENT | vmm::Page::READ_WRITE);
+    vmm::Manager::evil_function_do_not_call(db, kernel_aspace);
 
     kprint!("creating worker #0\r\n");
     let start_task = policy::Action::default().with(policy::Action::START_TASK);
@@ -132,6 +142,26 @@ fn rust_start() {
                     kprint!("* write <data> - write line at current node\r\n");
                     kprint!("* rule_remove <index> - remove policy rule\r\n");
                     kprint!("* rule_list - lists all policy rules\r\n");
+                    kprint!("* map <vaddr> <paddr> <count> <flags> - map page into current ASPACE\r\n");
+                    kprint!("* map_r <vaddr> <paddr> <count> <flags> - map page into current ASPACE and reload tlb\r\n");
+                    kprint!("* tlb_reload - reload cr3\r\n");
+                } else if s.starts_with("map") {
+                    let mut split = s.split_whitespace();
+                    split.next();
+                    if let Some(Some(vaddr)) = split.next().map(|x| parse_literal(x)) {
+                        if let Some(Some(paddr)) = split.next().map(|x| parse_literal(x)) {
+                            if let Some(Some(count)) = split.next().map(|x| parse_literal(x)) {
+                                if let Some(Some(flags)) = split.next().map(|x| parse_literal(x)) {
+                                    vmm::Manager::map(db, kernel_aspace, paddr as u64, vaddr as u64, count, flags as u64);
+                                    if s.starts_with("map_r") {
+                                        vmm::Manager::evil_function_do_not_call(db, kernel_aspace);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } else if s.starts_with("tlb_reload") {
+                    vmm::Manager::evil_function_do_not_call(db, kernel_aspace);
                 } else if s.starts_with("rule_list") {
                     policy::PolicyEngine::for_each_policy_rule(db, |rule| {
                         kprint!("- {:?}\r\n", rule);
