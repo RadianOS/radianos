@@ -10,5 +10,6 @@ boot/esp/
 *.img
 *.iso
 .idea
+.vscode
 *.elf
 *.efi
