@@ -1,7 +1,7 @@
 # Variables
 ifeq ($(OVMF_CODE),)
 OVMF_CODE_1 := /usr/share/OVMF/x64/OVMF_CODE.4m.fd
-OVMF_CODE_2 := $(OVML_PATH)/OVMF_CODE.fd #Arch
+OVMF_CODE_2 := $(OVMF_PATH)/OVMF_CODE.fd #Arch
 OVMF_CODE := $(or $(and $(wildcard $(OVMF_CODE_1)),$(OVMF_CODE_1)),$(OVMF_CODE_2))
 endif
 ifeq ($(OVMF_VARS),)
@@ -35,7 +35,7 @@ run: iso
 	$(MAKE) qemu
 
 build-bootloader:
-	cargo build $(if $(RELEASE),--release,) --target x86_64-unknown-uefi --bin boot
+	cargo build $(if $(RELEASE),--release,) -Zbuild-std --target x86_64-unknown-uefi --bin boot
 
 build-kernel:
 	RUSTFLAGS='-C link-arg=-Tsystem/drivers/src/kernel.ld -C relocation-model=static' cargo build $(if $(RELEASE),--release,) --target x86_64-unknown-none --bin kernel
