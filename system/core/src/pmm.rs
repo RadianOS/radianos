@@ -1,6 +1,6 @@
 use crate::kprint;
 
-unsafe extern {
+unsafe extern "C" {
     unsafe static mut HEAP_START: u8;
     unsafe static HEAP_END: u8;
 }

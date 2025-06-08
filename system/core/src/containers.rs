@@ -2,12 +2,18 @@ pub struct StaticVec<T, const N: usize> {
     inner: [T; N],
     size: usize,
 }
+impl<T: Default, const N: usize> Default for StaticVec<T, N> {
+    fn default() -> Self {
+        Self {
+            inner: core::array::from_fn(|_| T::default()),
+            size: 0,
+        }
+    }
+}
+
 impl<T, const N: usize> StaticVec<T, N> {
     pub fn new() -> Self where T: Default {
-        Self{
-            inner: core::array::from_fn(|_| T::default()),
-            size: 0
-        }
+        Self::default()
     }
 
     pub fn push(&mut self, data: T) {
@@ -28,6 +34,11 @@ impl<T, const N: usize> StaticVec<T, N> {
     #[inline]
     pub fn len(&self) -> usize {
         self.size
+    }
+
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.size == 0
     }
 
     #[inline]

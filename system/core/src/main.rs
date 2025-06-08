@@ -1,7 +1,5 @@
 #![no_std]
 #![no_main]
-#![feature(str_from_raw_parts)]
-#![feature(naked_functions)]
 
 use core::str;
 
@@ -60,7 +58,7 @@ macro_rules! dense_soa_generic {
     (struct $name:ident; $($f_name:ident: $f_repr:ty,)*) => {
         #[repr(C)]
         pub struct $name {
-            $(pub $f_name: crate::containers::StaticVec<$f_repr, 64>,)*
+            $(pub $f_name: $crate::containers::StaticVec<$f_repr, 64>,)*
         }
     }
 }
@@ -101,7 +99,7 @@ impl DebugSerial {
 macro_rules! kprint {
     ($($args:tt)*) => ({
         use core::fmt::Write;
-        let _ = write!(crate::DebugSerial{}, $($args)*);
+        let _ = write!($crate::DebugSerial{}, $($args)*);
     });
 }
 
@@ -131,8 +129,11 @@ extern "C" fn abort() -> ! {
 }
 
 /// Do not remove these or bootloader fails due to 0-sized section, thanks
+#[allow(dead_code)]
 static RODATA_DUMMY: u8 = 255;
+#[allow(dead_code)]
 static mut DATA_DUMMY: u8 = 156;
+#[allow(dead_code)]
 static mut BSS_DUMMY: u8 = 0;
 
 #[link_section = ".text.init"]
@@ -156,7 +157,7 @@ fn rust_start() {
     let _ = caps::Capability::new().with(caps::Capability::WRITE_LOG);
     kprint!("creating worker #0\r\n");
     let start_task = policy::Action::default().with(policy::Action::START_TASK);
-    let _ = db.workers.push(db::Worker::new());
+    db.workers.push(db::Worker::new());
     policy::PolicyEngine::add_rule(db, policy::PolicyRule{
         subject: db.find_from_str("worker_0").unwrap(),
         allowed: start_task
