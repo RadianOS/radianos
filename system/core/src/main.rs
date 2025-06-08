@@ -136,7 +136,7 @@ static mut DATA_DUMMY: u8 = 156;
 static mut BSS_DUMMY: u8 = 0;
 
 #[link_section = ".text.init"]
-#[naked]
+#[unsafe(naked)]
 #[unsafe(no_mangle)]
 unsafe extern "C" fn naked_start() {
     core::arch::naked_asm!(
