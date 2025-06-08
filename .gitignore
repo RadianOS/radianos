@@ -10,3 +10,5 @@ boot/esp/
 *.img
 *.iso
 .idea
+*.elf
+*.efi
