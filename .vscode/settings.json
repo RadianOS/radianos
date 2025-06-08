@@ -1,0 +1,4 @@
+{
+    "rust-analyzer.check.targets": "x86_64-unknown-none",
+    "rust-analyzer.check.allTargets": false
+}

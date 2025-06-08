@@ -5,4 +5,10 @@ shell.nix
 
 target
 
+boot/iso/
+boot/esp/
+*.img
+*.iso
 .idea
+*.elf
+*.efi
