@@ -133,7 +133,7 @@ impl Manager {
     }
     pub fn for_each_children<F: FnMut(NodeHandle)>(db: &db::Database, which: NodeHandle, mut f: F) {
         for i in 1..db.vfs_nodes.len() {
-            let node = db.vfs_nodes.get(i).unwrap();
+            let node = &db.vfs_nodes[i];
             if node.parent == which {
                 f(NodeHandle(i as u16));
             }
@@ -141,7 +141,7 @@ impl Manager {
     }
     pub fn find_children(db: &db::Database, from: NodeHandle, name: &str) -> Option<NodeHandle> {
         for i in 1..db.vfs_nodes.len() {
-            let node = db.vfs_nodes.get(i).unwrap();
+            let node = &db.vfs_nodes[i];
             if node.parent == from && node.get_name() == name {
                 return Some(NodeHandle(i as u16));
             }
@@ -149,7 +149,7 @@ impl Manager {
         None
     }
     pub fn get_node(db: &db::Database, handle: NodeHandle) -> &Node {
-        db.vfs_nodes.get(handle.0 as usize).unwrap()
+        &db.vfs_nodes[handle.0 as usize]
     }
     pub fn get_node_mut(db: &mut db::Database, handle: NodeHandle) -> &mut Node {
         db.vfs_nodes.get_mut(handle.0 as usize).unwrap()
@@ -160,7 +160,7 @@ impl Manager {
         actor: db::ObjectHandle,
         data: &[u8],
     ) -> Result {
-        let f = db.vfs_providers.get(handle.0 as usize).unwrap().write;
+        let f = db.vfs_providers[handle.0 as usize].write;
         f(db, actor, data)
     }
     pub fn invoke_provider_read(
@@ -169,7 +169,7 @@ impl Manager {
         actor: db::ObjectHandle,
         data: &mut [u8],
     ) -> Result {
-        let f = db.vfs_providers.get(handle.0 as usize).unwrap().write;
+        let f = db.vfs_providers[handle.0 as usize].write;
         f(db, actor, data)
     }
 }
