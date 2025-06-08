@@ -9,6 +9,7 @@ pub mod policy;
 pub mod pmm;
 pub mod containers;
 pub mod db;
+pub mod vfs;
 
 #[macro_export]
 macro_rules! dense_bitfield {
@@ -154,6 +155,8 @@ unsafe extern "C" fn naked_start() {
 
 #[unsafe(no_mangle)]
 fn rust_start() {
+    pmm::Manager::init();
+
     let db = db::Database::get_mut();
     let _ = caps::Capability::new().with(caps::Capability::WRITE_LOG);
     kprint!("creating worker #0\r\n");
@@ -165,7 +168,7 @@ fn rust_start() {
     });
     let res = policy::PolicyEngine::check(db, db.find_from_str("worker_0").unwrap(), start_task);
     kprint!("check policy? {}\r\n", res);
-
+    vfs::Manager::init(db);
 
     let logo = include_str!("logo.txt");
     let mut last_char = ' ';
@@ -187,6 +190,7 @@ fn rust_start() {
 
     kprint!("kernel console, type <help>?\r\n");
     let mut mean_counter = 0;
+    let mut current_node = vfs::NodeHandle::default();
     loop {
         let mut line = [0u8; 128];
         let mut index = 0;
@@ -196,9 +200,66 @@ fn rust_start() {
             let b = DebugSerial::get_byte();
             if b == b'\r' || index >= line.len() {
                 let s = unsafe { str::from_raw_parts(line.as_ptr(), index) };
-                kprint!("\r\n{}", s);
+                kprint!("\r\n");
                 if s.starts_with("help") {
+                    kprint!("* list - list all nodes\r\n");
+                    kprint!("* tree - list ALL, and i mean ALL nodes\r\n");
                     kprint!("* mean - say something mean\r\n");
+                    kprint!("* at - print current node\r\n");
+                    kprint!("* cd - change node\r\n");
+                } else if s.starts_with("tree") {
+                    let print_node = |level, handle| {
+                        let node = vfs::Manager::get_node(db, handle);
+                        let name = node.get_name();
+                        let level_prefix = [
+                            "-",
+                            "--",
+                            "---",
+                            "----",
+                            "-----",
+                            "------",
+                            "-------",
+                            "--------",
+                        ][level];
+                        kprint!("{} {}\r\n", level_prefix, name);
+                    };
+                    // TODO: recurse, but without the stack overhead
+                    vfs::Manager::for_each_children(db, current_node, |handle| {
+                        print_node(0, handle);
+                        vfs::Manager::for_each_children(db, handle, |handle| {
+                            print_node(1, handle);
+                            vfs::Manager::for_each_children(db, handle, |handle| {
+                                print_node(2, handle);
+                                vfs::Manager::for_each_children(db, handle, |handle| {
+                                    print_node(3, handle);
+                                });
+                            });
+                        });
+                    });
+                } else if s.starts_with("list") {
+                    vfs::Manager::for_each_children(db, current_node, |handle| {
+                        let node = vfs::Manager::get_node(db, handle);
+                        let name = node.get_name();
+                        kprint!("- {}\r\n", name);
+                    });
+                } else if s.starts_with("at") {
+                    let name = vfs::Manager::get_node(db, current_node).get_name();
+                    kprint!("{}\r\n", name);
+                } else if s.starts_with("cd") {
+                    let mut split = s.split_whitespace();
+                    split.next();
+                    if let Some(name) = split.next() {
+                        if name == ".." {
+                            let parent = vfs::Manager::get_node(db, current_node).get_parent();
+                            current_node = *parent;
+                        } else {
+                            if let Some(handle) = vfs::Manager::find_children(db, current_node, name) {
+                                current_node = handle;
+                            } else {
+                                kprint!("{} not found", name);
+                            }
+                        }
+                    }
                 } else if s.starts_with("mean") {
                     kprint!("{}", [
                         "go away\r\n",
@@ -207,6 +268,8 @@ fn rust_start() {
                         "something mean\r\n"
                     ][mean_counter % 4]);
                     mean_counter += 1;
+                } else {
+                    kprint!("{}???\r\n", s);
                 }
                 break;
             } else if b == 0x08 {

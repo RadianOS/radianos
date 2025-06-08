@@ -10,7 +10,7 @@ tagged_dense_bitfield!(
 );
 
 pub struct PolicyRule {
-    pub subject: db::Handle,
+    pub subject: db::ObjectHandle,
     pub allowed: Action
 }
 
@@ -24,7 +24,7 @@ impl PolicyEngine {
     pub fn add_rule(db: &mut db::Database, rule: PolicyRule) {
         db.policy_rule.push(rule);
     }
-    pub fn check(db: &db::Database, subject: db::Handle, what: Action) -> bool {
+    pub fn check(db: &db::Database, subject: db::ObjectHandle, what: Action) -> bool {
         for i in 0..db.policy_rule.len() {
             let r = db.policy_rule.get(i).unwrap();
             if r.subject == subject {
