@@ -1,14 +1,15 @@
 use crate::{policy, pmm, vfs};
 
+/// "Fat pointer" - only use if you absolutely dont know the source of id
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ObjectHandle {
-    id: u8,
-    type_: u8,
+    id: u16,
+    type_: u16,
 }
 impl ObjectHandle {
-    pub const NONE: u8 = 0;
-    pub const WORKER: u8 = 1;
-    pub const ACTOR: u8 = 2;
+    pub const NONE: u16 = 0;
+    pub const WORKER: u16 = 1;
+    pub const ACTOR: u16 = 2;
 }
 
 pub struct Worker {
@@ -64,7 +65,7 @@ impl Database {
             let offset = s.strip_prefix("worker_").unwrap().parse::<usize>().unwrap_or_default();
             if offset < self.workers.len() {
                 Some(ObjectHandle{
-                    id: offset as u8,
+                    id: offset as u16,
                     type_: ObjectHandle::WORKER,
                 })
             } else {
