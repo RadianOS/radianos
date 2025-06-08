@@ -47,6 +47,11 @@ fn tree_traverse_node(db: &db::Database, handle: vfs::NodeHandle, level: usize) 
     walk_had_children
 }
 
+unsafe extern "C" {
+    unsafe static KERNEL_START: u8;
+    unsafe static KERNEL_END: u8;
+}
+
 #[unsafe(no_mangle)]
 fn rust_start() {
     pmm::Manager::init();
@@ -54,6 +59,16 @@ fn rust_start() {
     let db = db::Database::get_mut();
     smp::Manager::init();
     vmm::Manager::init(db);
+
+    // Linear map the kernel into the process
+    db.aspace_pgtable.push(pmm::Handle::default()); //kernel space assumed :)
+    {
+        let aspace = vmm::Manager::new_address_space();
+        let start_addr = unsafe { (&KERNEL_START) as *const _ as u64 };
+        let end_addr = unsafe { (&KERNEL_END) as *const _ as u64 };
+        vmm::Manager::map(db, aspace, 0, 0, 512 + 1, vmm::Page::PRESENT | vmm::Page::READ_WRITE);
+        vmm::Manager::evil_function_do_not_call(db, aspace);
+    }
 
     kprint!("creating worker #0\r\n");
     let start_task = policy::Action::default().with(policy::Action::START_TASK);

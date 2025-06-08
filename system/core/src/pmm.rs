@@ -34,7 +34,7 @@ impl Manager {
         unsafe {
             let heap = Self::get_heap_mut();
             let bytes = Self::get_num_pages() / BITMAP_BITS * BITMAP_BYTES;
-            kprint!("[pmm] {}, b={}", Self::get_num_pages(), bytes);
+            kprint!("[pmm] {}, b={}\r\n", Self::get_num_pages(), bytes);
             heap.write_bytes(0, bytes);
             heap.add(0).write(1 << 0);
         }
@@ -53,6 +53,14 @@ impl Manager {
             }
         }
         unreachable!();
+    }
+
+    pub fn alloc_page_zeroed() -> Handle {
+        let handle = Self::alloc_page();
+        unsafe {
+            handle.get_mut().write_bytes(0, 4096);
+        }
+        handle
     }
 
     pub fn free_page(handle: Handle) {
@@ -78,4 +86,13 @@ impl Handle {
             Manager::get_heap_mut().byte_add(PAGE_SIZE * self.0 as usize) as *mut u8
         }
     }
+}
+
+#[repr(C)]
+pub struct MemoryEntry {
+    virt: u64,
+    phys: u64,
+    page_count: u64,
+    attribute: u64,
+    type_: u32,
 }

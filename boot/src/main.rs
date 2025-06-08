@@ -3,17 +3,23 @@
 extern crate alloc;
 
 use uefi::{
-    boot::{get_handle_for_protocol, open_protocol_exclusive},
-    prelude::*,
-    proto::console::text::Output
+    boot::{get_handle_for_protocol, open_protocol_exclusive, MemoryType}, mem::memory_map::MemoryMap, prelude::*, proto::console::text::Output
 };
 
 #[macro_use]
 mod serial;
 mod fs;
 mod kernel;
-
 use kernel::load_kernel;
+
+#[repr(C)]
+struct MemoryEntry {
+    virt: u64,
+    phys: u64,
+    page_count: u64,
+    attribute: u64,
+    type_: u32,
+}
 
 #[entry]
 fn boot_efi_main() -> Status {
@@ -27,7 +33,28 @@ fn boot_efi_main() -> Status {
     boot_print!("Kernel entry point: 0x{:x}\r\n", kernel_entry as usize);
     // You could use UEFI simple text output protocol here for debugging
     boot_print!("Jumping to kernel entry point at 0x{:x}\r\n", entry_point);
+
+    let memory_map = uefi::boot::memory_map(uefi::boot::MemoryType::LOADER_DATA).unwrap();
+
+    let table = uefi::boot::allocate_pages(boot::AllocateType::AnyPages, MemoryType::LOADER_DATA, 1).unwrap().as_ptr();
+    for (i, e) in memory_map.entries().enumerate() {
+        unsafe {
+            (table as *mut MemoryEntry).add(i).write(MemoryEntry{
+                virt: e.virt_start,
+                phys: e.phys_start,
+                page_count: e.page_count,
+                type_:core::mem::transmute::<_, u32>(e.ty),
+                attribute: core::mem::transmute::<_, u64>(e.att),
+            });
+        }
+    }
     unsafe {
-        kernel_entry();
+        core::arch::asm!(
+            "call {0}",
+            in(reg) kernel_entry,
+            in("rsi") (table as *const MemoryEntry) as u64,
+            in("rdi") (memory_map.entries().len()) as u64,
+            options(noreturn)
+        )
     }
 }

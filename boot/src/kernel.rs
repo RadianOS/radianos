@@ -2,7 +2,7 @@
 use xmas_elf::{program, ElfFile};
 use uefi::boot::{self, AllocateType, MemoryType};
 use crate::fs::read_file;
-use crate::boot_print;
+use crate::{boot_print, MemoryEntry};
 
 pub const KERNEL_BASE: u64 = 0;
 

@@ -36,7 +36,7 @@ pub struct Database {
     pub policy_rule: StaticVec<policy::PolicyRule, 128>,
     pub vfs_nodes: StaticVec<vfs::Node, 128>,
     pub vfs_providers: StaticVec<vfs::Provider, 32>,
-    pub page_directory: [pmm::Handle; smp::MAX_CORES],
+    pub aspace_pgtable: StaticVec<pmm::Handle, 64>,
 }
 static mut GLOBAL_DATABASE: [u8; core::mem::size_of::<Database>()] = [0u8; core::mem::size_of::<Database>()];
 
