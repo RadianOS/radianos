@@ -4,10 +4,10 @@
 
 use core::str;
 
-pub mod policy;
-pub mod pmm;
 pub mod containers;
 pub mod db;
+pub mod pmm;
+pub mod policy;
 pub mod vfs;
 
 #[macro_export]
@@ -75,7 +75,7 @@ impl core::fmt::Write for DebugSerial {
 }
 impl DebugSerial {
     pub fn get_byte() -> u8 {
-        let mut byte = 0;
+        let byte;
         unsafe {
             core::arch::asm!(
                 "in al, dx",
@@ -145,7 +145,7 @@ unsafe extern "C" fn naked_start() {
         "cli",
         "lea rsp, STACK_TOP",
         "call rust_start",
-    "2:",
+        "2:",
         "cli",
         "hlt",
         "jmp 2b"
@@ -161,13 +161,17 @@ fn rust_start() {
     let start_task = policy::Action::default().with(policy::Action::START_TASK);
     db.workers.push(db::Worker::new()); //kernel worker
     policy::PolicyEngine::add_rule(db, policy::PolicyRule::default()); //default rule
-    policy::PolicyEngine::add_rule(db, policy::PolicyRule{
-        subject: db.find_from_str("worker_0").unwrap(),
-        allowed: start_task,
-        capabilities: policy::Capability::new().with(policy::Capability::WRITE_LOG),
-    });
+    policy::PolicyEngine::add_rule(
+        db,
+        policy::PolicyRule {
+            subject: db.find_from_str("worker_0").unwrap(),
+            allowed: start_task,
+            capabilities: policy::Capability::new().with(policy::Capability::WRITE_LOG),
+        },
+    );
 
-    let res = policy::PolicyEngine::check_action(db, db.find_from_str("worker_0").unwrap(), start_task);
+    let res =
+        policy::PolicyEngine::check_action(db, db.find_from_str("worker_0").unwrap(), start_task);
     kprint!("check policy? {}\r\n", res);
     vfs::Manager::init(db);
 
@@ -176,14 +180,17 @@ fn rust_start() {
     for c in logo.chars() {
         if c != last_char {
             last_char = c;
-            kprint!("{}", match c {
-                'B' => "\x1b[0;91m",
-                '&' => "\x1b[1;91m",
-                '#' => "\x1b[0;91m",
-                'P' => "\x1b[0;91m",
-                'G' => "\x1b[1;31m",
-                _ => "\x1b[0;0m",
-            });
+            kprint!(
+                "{}",
+                match c {
+                    'B' => "\x1b[0;91m",
+                    '&' => "\x1b[1;91m",
+                    '#' => "\x1b[0;91m",
+                    'P' => "\x1b[0;91m",
+                    'G' => "\x1b[1;31m",
+                    _ => "\x1b[0;0m",
+                }
+            );
         }
         kprint!("{}", c);
     }
@@ -192,7 +199,7 @@ fn rust_start() {
     kprint!("kernel console, type <help>?\r\n");
     let mut mean_counter = 0;
     let mut current_node = vfs::NodeHandle::default();
-    let mut current_actor = db.find_from_str("worker_0").unwrap();
+    let current_actor = db.find_from_str("worker_0").unwrap();
     loop {
         let mut line = [0u8; 128];
         let mut index = 0;
@@ -233,7 +240,12 @@ fn rust_start() {
                     split.next();
                     if let Some(name) = split.next() {
                         let handle = vfs::Manager::get_node(db, current_node).get_provider();
-                        let res = vfs::Manager::invoke_provider_write(db, *handle, current_actor, name.as_bytes());
+                        let res = vfs::Manager::invoke_provider_write(
+                            db,
+                            *handle,
+                            current_actor,
+                            name.as_bytes(),
+                        );
                         kprint!("\r\n{:?}\r\n", res);
                     } else {
                         kprint!("missing arg\r\n");
@@ -243,14 +255,7 @@ fn rust_start() {
                         let node = vfs::Manager::get_node(db, handle);
                         let name = node.get_name();
                         let level_prefix = [
-                            "-",
-                            "--",
-                            "---",
-                            "----",
-                            "-----",
-                            "------",
-                            "-------",
-                            "--------",
+                            "-", "--", "---", "----", "-----", "------", "-------", "--------",
                         ][level];
                         kprint!("{} {}\r\n", level_prefix, name);
                     };
@@ -283,33 +288,34 @@ fn rust_start() {
                         if name == ".." {
                             let parent = vfs::Manager::get_node(db, current_node).get_parent();
                             current_node = *parent;
+                        } else if let Some(handle) =
+                            vfs::Manager::find_children(db, current_node, name)
+                        {
+                            current_node = handle;
                         } else {
-                            if let Some(handle) = vfs::Manager::find_children(db, current_node, name) {
-                                current_node = handle;
-                            } else {
-                                kprint!("{} not found\r\n", name);
-                            }
+                            kprint!("{} not found\r\n", name);
                         }
                     } else {
                         kprint!("missing arg\r\n");
                     }
                 } else if s.starts_with("mean") {
-                    kprint!("{}\r\n", [
-                        "go away\r\n",
-                        "иди нахуй\r\n",
-                        "vmovntdqa without the ntdqa\r\n",
-                        "something mean\r\n"
-                    ][mean_counter % 4]);
+                    kprint!(
+                        "{}\r\n",
+                        [
+                            "go away\r\n",
+                            "иди нахуй\r\n",
+                            "vmovntdqa without the ntdqa\r\n",
+                            "something mean\r\n"
+                        ][mean_counter % 4]
+                    );
                     mean_counter += 1;
                 } else {
                     kprint!("{}???\r\n", s);
                 }
                 break;
-            } else if b == 0x08 {
+            } else if b == 0x08 || b == 0x7F {
                 kprint!("\x08 \x08");
-                if index > 0 {
-                    index -= 1;
-                }
+                index = index.saturating_sub(1);
             } else if b != 0 {
                 line[index] = b;
                 index += 1;
