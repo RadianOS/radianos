@@ -1,0 +1,5 @@
+/target
+/esp
+/iso
+*.iso
+*.img

@@ -4,3 +4,5 @@ system/target/
 shell.nix
 
 target
+
+.idea
