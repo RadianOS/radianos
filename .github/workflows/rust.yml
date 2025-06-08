@@ -16,7 +16,11 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
-    - name: Build
-      run: cargo build --verbose
-    - name: Run tests
-      run: cargo test --verbose
+    - name: Install rustup
+      run: rustup target add x86_64-unknown-uefi
+    - name: Install rustup x2
+      run: rustup target add x86_64-unknown-none
+    - name: Build bootloader
+      run: cargo build --target x86_64-unknown-uefi --bin boot
+    - name: Build kernel
+      run: RUSTFLAGS='-C link-arg=-Tsystem/core/src/linker.ld -C relocation-model=static' cargo build --target x86_64-unknown-none --bin core

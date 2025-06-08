@@ -1,11 +1,11 @@
-use crate::{policy, pmm};
+use crate::{policy, pmm, vfs};
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Handle {
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct ObjectHandle {
     id: u8,
     type_: u8,
 }
-impl Handle {
+impl ObjectHandle {
     pub const NONE: u8 = 0;
     pub const WORKER: u8 = 1;
     pub const ACTOR: u8 = 2;
@@ -30,20 +30,12 @@ impl Default for Worker {
     }
 }
 
-pub struct Transaction {
-    data: pmm::Handle,
-}
-
-pub struct Provider {
-    
-}
-
 crate::dense_soa_generic!(
     struct Database;
     workers: Worker,
-    logged_transactions: Transaction,
-    pending_transactions: Transaction,
     policy_rule: policy::PolicyRule,
+    vfs_nodes: vfs::Node,
+    vfs_providers: vfs::Provider,
 );
 static mut GLOBAL_DATABASE: [u8; core::mem::size_of::<Database>()] = [0u8; core::mem::size_of::<Database>()];
 
@@ -67,13 +59,13 @@ impl Database {
         }
     }
 
-    pub fn find_from_str(&self, s: &str) -> Option<Handle> {
+    pub fn find_from_str(&self, s: &str) -> Option<ObjectHandle> {
         if s.starts_with("worker_") {
             let offset = s.strip_prefix("worker_").unwrap().parse::<usize>().unwrap_or_default();
             if offset < self.workers.len() {
-                Some(Handle{
+                Some(ObjectHandle{
                     id: offset as u8,
-                    type_: Handle::WORKER,
+                    type_: ObjectHandle::WORKER,
                 })
             } else {
                 None
