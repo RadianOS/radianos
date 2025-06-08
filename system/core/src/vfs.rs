@@ -131,7 +131,7 @@ impl Manager {
         });
         NodeHandle((db.vfs_nodes.len() - 1) as u16)
     }
-    pub fn for_each_children<F: Fn(NodeHandle)>(db: &db::Database, which: NodeHandle, f: F) {
+    pub fn for_each_children<F: FnMut(NodeHandle)>(db: &db::Database, which: NodeHandle, mut f: F) {
         for i in 1..db.vfs_nodes.len() {
             let node = db.vfs_nodes.get(i).unwrap();
             if node.parent == which {

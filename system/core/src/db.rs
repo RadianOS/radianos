@@ -76,3 +76,34 @@ impl Database {
         }
     }
 }
+
+static DEFAULT_PATHBUF: PathBuf<'static> = PathBuf::from_str(".");
+pub struct PathBuf<'a> {
+    inner: &'a str,
+}
+impl<'a> PathBuf<'a> {
+    pub const fn from_str(inner: &'a str) -> Self {
+        Self{ inner }
+    }
+    pub fn path(&'a self) -> Path<'a> {
+        Path{ inner: &self }
+    }
+}
+
+pub struct Path<'a> {
+    inner: &'a PathBuf<'a>, //смлв
+}
+impl<'a> Path<'a> {
+    pub fn new() -> Self {
+        Self{ inner: &DEFAULT_PATHBUF, }
+    }
+    pub fn components(&self) -> core::str::Split<'a, &'a str> {
+        self.inner.inner.split("/")
+    }
+    pub fn file_name(&'a self) -> Option<&'a str> {
+        self.components().last().map(|p| p.split(".").next()).unwrap_or(None)
+    }
+    pub fn extension(&'a self) -> Option<&'a str> {
+        self.components().last().map(|p| p.split(".").last()).unwrap_or(None)
+    }
+}

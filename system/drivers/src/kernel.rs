@@ -28,6 +28,25 @@ unsafe extern "C" fn naked_start() {
     );
 }
 
+/// Fine have your stack overhead
+fn tree_traverse_node(db: &db::Database, handle: vfs::NodeHandle, level: usize) -> bool {
+    let tree_print_node = |handle, level| {
+        let node = vfs::Manager::get_node(db, handle);
+        let name = node.get_name();
+        let level_prefix = [
+            "-", "--", "---", "----", "-----", "------", "-------", "--------",
+        ][level];
+        kprint!("{} {}\r\n", level_prefix, name);
+    };
+    let mut walk_had_children = false;
+    vfs::Manager::for_each_children(db, handle, |handle| {
+        tree_print_node(handle, level);
+        tree_traverse_node(db, handle, level + 1);
+        walk_had_children = true;
+    });
+    walk_had_children
+}
+
 #[unsafe(no_mangle)]
 fn rust_start() {
     pmm::Manager::init();
@@ -127,27 +146,7 @@ fn rust_start() {
                         kprint!("missing arg\r\n");
                     }
                 } else if s.starts_with("tree") {
-                    let print_node = |level, handle| {
-                        let node = vfs::Manager::get_node(db, handle);
-                        let name = node.get_name();
-                        let level_prefix = [
-                            "-", "--", "---", "----", "-----", "------", "-------", "--------",
-                        ][level];
-                        kprint!("{} {}\r\n", level_prefix, name);
-                    };
-                    // TODO: recurse, but without the stack overhead
-                    vfs::Manager::for_each_children(db, current_node, |handle| {
-                        print_node(0, handle);
-                        vfs::Manager::for_each_children(db, handle, |handle| {
-                            print_node(1, handle);
-                            vfs::Manager::for_each_children(db, handle, |handle| {
-                                print_node(2, handle);
-                                vfs::Manager::for_each_children(db, handle, |handle| {
-                                    print_node(3, handle);
-                                });
-                            });
-                        });
-                    });
+                    tree_traverse_node(db, current_node, 0);
                 } else if s.starts_with("list") {
                     vfs::Manager::for_each_children(db, current_node, |handle| {
                         let node = vfs::Manager::get_node(db, handle);
