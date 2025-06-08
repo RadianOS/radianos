@@ -15,7 +15,11 @@ FAT_IMG := fat.img
 ISO_FILE := radianos.iso
 # Default to debug unless RELEASE=1 is set
 BOOTLOADER_BUILD_DIR := $(if $(RELEASE),release,debug)
-BOOTLOADER_PATH := $(CURDIR)/../target/x86_64-unknown-uefi/$(BOOTLOADER_BUILD_DIR)/boot.efi
+BOOTLOADER_PATH := $(CURDIR)/target/x86_64-unknown-uefi/$(BOOTLOADER_BUILD_DIR)/boot.efi
+
+KERNEL_BUILD_DIR := $(if $(RELEASE),release,debug)
+KERNEL_PATH := $(CURDIR)/target/x86_64-unknown-none/$(KERNEL_BUILD_DIR)/core
+
 ESP_DIR := esp/efi/boot
 
 .PHONY: run clean build-kernel build-bootloader check-artifacts esp fat iso qemu rust-clean
@@ -25,7 +29,10 @@ run: iso
 	$(MAKE) qemu
 
 build-bootloader:
-	cargo build $(if $(RELEASE),--release,) -Zbuild-std --target x86_64-unknown-uefi
+	cargo build $(if $(RELEASE),--release,) --target x86_64-unknown-uefi --bin boot
+
+build-kernel:
+	cargo build $(if $(RELEASE),--release,) --target x86_64-unknown-none --bin core
 
 check-artifacts: build-kernel build-bootloader
 	@if [ ! -f $(BOOTLOADER_PATH) ]; then echo "Error: boot.efi not found!"; exit 1; fi
@@ -33,6 +40,7 @@ check-artifacts: build-kernel build-bootloader
 esp: check-artifacts
 	mkdir -p $(ESP_DIR)
 	cp $(BOOTLOADER_PATH) $(ESP_DIR)/bootx64.efi
+	cp $(KERNEL_PATH) $(ESP_DIR)/kernel.elf
 
 fat: esp
 	dd if=/dev/zero of=$(FAT_IMG) bs=1M count=33
@@ -40,6 +48,7 @@ fat: esp
 	mmd -i $(FAT_IMG) ::/EFI
 	mmd -i $(FAT_IMG) ::/EFI/BOOT
 	mcopy -i $(FAT_IMG) $(ESP_DIR)/bootx64.efi ::/EFI/BOOT
+	mcopy -i $(FAT_IMG) $(ESP_DIR)/kernel.elf ::/EFI/BOOT/KERNEL
 
 iso: fat
 	mkdir -p iso

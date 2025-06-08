@@ -12,8 +12,6 @@ panic = "abort"
 panic = "abort"
 
 [dependencies]
-ansi_rgb = "0.2.0"
-log = "0.4.27"
 panic-abort = "0.3.2"
 uefi = { version = "0.35.0", features = ["alloc", "global_allocator", "logger", "panic_handler"] }
 xmas-elf = "0.10.0"
