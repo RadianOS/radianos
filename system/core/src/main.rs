@@ -1,6 +1,9 @@
 #![no_std]
 #![no_main]
+#![feature(str_from_raw_parts)]
 #![feature(naked_functions)]
+
+use core::str;
 
 pub mod caps;
 pub mod policy;
@@ -66,15 +69,31 @@ struct DebugSerial;
 impl core::fmt::Write for DebugSerial {
     fn write_str(&mut self, s: &str) -> core::fmt::Result {
         for b in s.bytes() {
-            unsafe {
-                core::arch::asm!(
-                    "out dx, al",
-                    in("al") b,
-                    in("dx") 0x3f8u16
-                );
-            }
+            Self::put_byte(b);
         }
         Ok(())
+    }
+}
+impl DebugSerial {
+    pub fn get_byte() -> u8 {
+        let mut byte = 0;
+        unsafe {
+            core::arch::asm!(
+                "in al, dx",
+                out("al") byte,
+                in("dx") 0x3f8
+            );
+        }
+        byte
+    }
+    pub fn put_byte(b: u8) {
+        unsafe {
+            core::arch::asm!(
+                "out dx, al",
+                in("al") b,
+                in("dx") 0x3f8
+            );
+        }
     }
 }
 
@@ -144,6 +163,60 @@ fn rust_start() {
     });
     let res = policy::PolicyEngine::check(db, db.find_from_str("worker_0").unwrap(), start_task);
     kprint!("check policy? {}\r\n", res);
-    kprint!("hello rust world!\r\n");
-    unreachable!();
+
+
+    let logo = include_str!("logo.txt");
+    let mut last_char = ' ';
+    for c in logo.chars() {
+        if c != last_char {
+            last_char = c;
+            kprint!("{}", match c {
+                'B' => "\x1b[0;91m",
+                '&' => "\x1b[1;91m",
+                '#' => "\x1b[0;91m",
+                'P' => "\x1b[0;91m",
+                'G' => "\x1b[1;31m",
+                _ => "\x1b[0;0m",
+            });
+        }
+        kprint!("{}", c);
+    }
+    kprint!("\x1b[0;0m\r\n");
+
+    kprint!("kernel console, type <help>?\r\n");
+    let mut mean_counter = 0;
+    loop {
+        let mut line = [0u8; 128];
+        let mut index = 0;
+        kprint!("\r\n");
+        kprint!("RadianOS>");
+        loop {
+            let b = DebugSerial::get_byte();
+            if b == b'\r' || index >= line.len() {
+                let s = unsafe { str::from_raw_parts(line.as_ptr(), index) };
+                kprint!("\r\n{}", s);
+                if s.starts_with("help") {
+                    kprint!("* mean - say something mean\r\n");
+                } else if s.starts_with("mean") {
+                    kprint!("{}", [
+                        "go away\r\n",
+                        "иди нахуй\r\n",
+                        "vmovntdqa without the ntdqa\r\n",
+                        "something mean\r\n"
+                    ][mean_counter % 4]);
+                    mean_counter += 1;
+                }
+                break;
+            } else if b == 0x08 {
+                kprint!("\x08 \x08");
+                if index > 0 {
+                    index -= 1;
+                }
+            } else if b != 0 {
+                line[index] = b;
+                index += 1;
+                DebugSerial::put_byte(b);
+            }
+        }
+    }
 }

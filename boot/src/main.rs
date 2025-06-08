@@ -80,24 +80,6 @@ pub fn load_kernel(file_path: &str) -> (usize, KernelFn) {
     let bytes = read_file(file_path).unwrap();
     let elf = ElfFile::new(&bytes).expect("Failed to parse ELF file");
 
-    // for sh in elf.section_iter() {
-    //     match sh.get_type().unwrap() {
-    //         sections::ShType::Rela => {
-    //             match sh.get_data(&elf).unwrap() {
-    //                 SectionData::Rela64(rela) => {
-    //                     for rela in rela.iter() {
-    //                         match rela.get_type() {
-    //                         }
-    //                     }
-    //                 }
-    //                 _ => {}
-    //             }
-    //         }
-    //         sections::ShType::Rel => boot_print!("rel"),
-    //         _ => {}
-    //     }
-    // }
-
     for ph in elf.program_iter() {
         if ph.get_type().unwrap() == program::Type::Dynamic {
             boot_print!("Skipping dynamic segment");
