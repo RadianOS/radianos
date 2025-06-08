@@ -1,5 +1,4 @@
 use crate::tagged_dense_bitfield;
-use crate::dense_soa_generic;
 use crate::db;
 
 tagged_dense_bitfield!(
@@ -17,9 +16,10 @@ pub struct PolicyRule {
 
 /// Policy engine that holds all rules and evaluates them. (zero sized)
 pub struct PolicyEngine;
+
 impl PolicyEngine {
     pub fn new() -> Self {
-        Self{}
+        Self {}
     }
     pub fn add_rule(db: &mut db::Database, rule: PolicyRule) {
         db.policy_rule.push(rule);
@@ -32,5 +32,11 @@ impl PolicyEngine {
             }
         }
         false
+    }
+}
+
+impl Default for PolicyEngine {
+    fn default() -> Self {
+        Self::new()
     }
 }

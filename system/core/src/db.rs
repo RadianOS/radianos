@@ -1,4 +1,4 @@
-use crate::{containers::StaticVec, policy, pmm};
+use crate::{policy, pmm};
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Handle {
@@ -17,9 +17,15 @@ pub struct Worker {
 }
 impl Worker {
     pub fn new() -> Self {
-        Self{
+        Self::default()
+    }
+}
+
+impl Default for Worker {
+    fn default() -> Self {
+        Self {
             gpr: core::array::from_fn(|_| 0),
-            stack_page: pmm::Handle::default()
+            stack_page: pmm::Handle::default(),
         }
     }
 }
@@ -49,12 +55,14 @@ impl Database {
     /// Assumed lock
     pub fn get() -> &'static Self {
         unsafe {
+            #[allow(static_mut_refs)]
             (GLOBAL_DATABASE.as_ptr() as *const Self).as_ref().unwrap()
         }
     }
 
     pub fn get_mut() -> &'static mut Self {
         unsafe {
+            #[allow(static_mut_refs)]
             (GLOBAL_DATABASE.as_mut_ptr() as *mut Self).as_mut().unwrap()
         }
     }
@@ -63,7 +71,7 @@ impl Database {
         if s.starts_with("worker_") {
             let offset = s.strip_prefix("worker_").unwrap().parse::<usize>().unwrap_or_default();
             if offset < self.workers.len() {
-                return Some(Handle{
+                Some(Handle{
                     id: offset as u8,
                     type_: Handle::WORKER,
                 })

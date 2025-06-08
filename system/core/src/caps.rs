@@ -1,4 +1,4 @@
-use crate::{db, dense_bitfield};
+use crate::dense_bitfield;
 
 // Define system capabilities that can be granted to components or processes.
 dense_bitfield!(
