@@ -35,7 +35,7 @@ run: iso
 	$(MAKE) qemu
 
 build-bootloader:
-	cargo build $(if $(RELEASE),--release,) -Zbuild-std --target x86_64-unknown-uefi --bin boot
+	cargo build $(if $(RELEASE),--release,) --target x86_64-unknown-uefi --bin boot
 
 build-kernel:
 	RUSTFLAGS='-C link-arg=-Tsystem/drivers/src/kernel.ld -C relocation-model=static' cargo build $(if $(RELEASE),--release,) --target x86_64-unknown-none --bin kernel
