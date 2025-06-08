@@ -32,7 +32,7 @@ build-bootloader:
 	cargo build $(if $(RELEASE),--release,) --target x86_64-unknown-uefi --bin boot
 
 build-kernel:
-	cargo build $(if $(RELEASE),--release,) --target x86_64-unknown-none --bin core
+	RUSTFLAGS='-C link-arg=-Tsystem/core/src/linker.ld' cargo build $(if $(RELEASE),--release,) --target x86_64-unknown-none --bin core
 
 check-artifacts: build-kernel build-bootloader
 	@if [ ! -f $(BOOTLOADER_PATH) ]; then echo "Error: boot.efi not found!"; exit 1; fi
@@ -59,14 +59,14 @@ qemu: iso
 	qemu-system-x86_64 \
 		-drive if=pflash,format=raw,readonly=on,file=$(OVMF_CODE) \
 		-drive format=raw,file=$(ISO_FILE) \
-		-smp 4 -m 2G -cpu max \
+		-smp 4 -m 6G -cpu max -s \
 		-device qemu-xhci -device usb-kbd -audiodev pa,id=snd0 -machine pcspk-audiodev=snd0 --serial mon:stdio -M q35 --no-reboot
 
 qemu-nographic: iso # yo stop allocating so much my pc only has 8G atleast allocate 2G
 	qemu-system-x86_64 \
 		-drive if=pflash,format=raw,readonly=on,file=$(OVMF_CODE) \
 		-drive format=raw,file=$(ISO_FILE) \
-		-smp 4 -m 2G -cpu max \
+		-smp 4 -m 6G -cpu max -s \
 		-device qemu-xhci -device usb-kbd -audiodev pa,id=snd0 -machine pcspk-audiodev=snd0 -M q35 --no-reboot -nographic
 
 clean:

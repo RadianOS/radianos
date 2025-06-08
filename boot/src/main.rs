@@ -104,9 +104,9 @@ pub fn load_kernel(file_path: &str) -> (usize, KernelFn) {
         } else {
             MemoryType::LOADER_DATA
         };
-
+        boot_print!("Using {num_pages} pages, addr = {virt_addr:0x}, align {aligned_virt_addr:0x} with type {:?}, {:?}\r\n", mem_type, ph.physical_addr());
         let dest_ptr = boot::allocate_pages(
-            AllocateType::Address(KERNEL_LOAD_BASE + u64::try_from(aligned_virt_addr).unwrap()),
+            AllocateType::Address(u64::try_from(aligned_virt_addr).unwrap()),
             mem_type,
             num_pages,
         )
@@ -119,21 +119,20 @@ pub fn load_kernel(file_path: &str) -> (usize, KernelFn) {
                 dest_ptr.add(page_offset),
                 file_size,
             );
-
             if mem_size > file_size {
                 core::ptr::write_bytes(dest_ptr.add(page_offset + file_size), 0, mem_size - file_size);
             }
         }
     }
 
-    let entry_point = (KERNEL_LOAD_BASE + elf.header.pt2.entry_point()) as usize;
+    let entry_point = elf.header.pt2.entry_point() as usize;
     let kernel_entry: KernelFn = unsafe { core::mem::transmute(entry_point) };
 
     (entry_point, kernel_entry)
 }
 
 #[entry]
-fn efi_main() -> Status {
+fn boot_efi_main() -> Status {
     uefi::helpers::init().unwrap();
     let handle = get_handle_for_protocol::<Output>().unwrap();
     let mut output = open_protocol_exclusive::<Output>(handle).unwrap();

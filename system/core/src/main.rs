@@ -1,5 +1,6 @@
 #![no_std]
 #![no_main]
+#![feature(naked_functions)]
 
 #[panic_handler]
 fn panic(info: &core::panic::PanicInfo) -> ! {
@@ -18,10 +19,17 @@ extern "C" fn abort() -> ! {
     }
 }
 
+static RODATA_DUMMY: u8 = 255;
+static mut DATA_DUMMY: u8 = 156;
+static mut BSS_DUMMY: u8 = 0;
+
+#[naked]
 #[unsafe(no_mangle)]
-fn efi_main() {
-    loop {
-        unsafe {
-        core::arch::asm!("pause"); }
-    }
+unsafe extern "C" fn naked_start() {
+    core::arch::naked_asm!(
+    "2:",
+        "cli",
+        "hlt",
+        "jmp 2b"
+    );
 }
