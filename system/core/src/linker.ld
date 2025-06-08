@@ -1,6 +1,6 @@
 ENTRY(naked_start);
 MEMORY {
-    ram  (wxa) : ORIGIN = 0x100000000, LENGTH = 128M
+    ram (wxa) : ORIGIN = 0x100000, LENGTH = 32M
 }
 PHDRS {
     text PT_LOAD;
@@ -10,21 +10,30 @@ PHDRS {
 }
 SECTIONS {
     .text : ALIGN(4K) {
-        *(.text.init .text*)
+        *(.text.init .text* .text.*)
     } >ram AT>ram :text
     .data : ALIGN(4K) {
-        *(.data*)
+        *(.data* .data.*)
+        *(.sdata* .sdata.*)
     } >ram AT>ram :data
     .rodata : ALIGN(4K) {
-        *(.rodata*)
+        *(.rodata* .rodata.*)
+        *(.srodata* .srodata.*)
     } >ram AT>ram :rodata
     .bss : ALIGN(4K) {
         *(COMMON)
-        *(.bss*)
+        *(.bss* .bss.*)
+        *(.sbss* .sbss.*)
         // cant trust uefi
         . = ALIGN(4096);
-        PROVIDE(stack_bottom = .);
+        PROVIDE(STACK_BOTTOM = .);
         . += 8192;
-        PROVIDE(stack_top = .);
+        PROVIDE(STACK_TOP = .);
     } >ram AT>ram :bss
+
+    /* mini heap do not disturb */
+    . = ALIGN(4096);
+    PROVIDE(HEAP_START = .);
+    . += 8192 * 16;
+    PROVIDE(HEAP_END = .);
 }
