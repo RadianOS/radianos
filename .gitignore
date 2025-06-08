@@ -5,8 +5,8 @@ shell.nix
 
 target
 
-boot/iso/
-boot/esp/
+iso/
+esp/
 *.img
 *.iso
 .idea

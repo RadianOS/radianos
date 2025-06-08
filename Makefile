@@ -18,7 +18,7 @@ BOOTLOADER_BUILD_DIR := $(if $(RELEASE),release,debug)
 BOOTLOADER_PATH := $(CURDIR)/target/x86_64-unknown-uefi/$(BOOTLOADER_BUILD_DIR)/boot.efi
 
 KERNEL_BUILD_DIR := $(if $(RELEASE),release,debug)
-KERNEL_PATH := $(CURDIR)/target/x86_64-unknown-none/$(KERNEL_BUILD_DIR)/core
+KERNEL_PATH := $(CURDIR)/target/x86_64-unknown-none/$(KERNEL_BUILD_DIR)/kernel
 
 ESP_DIR := esp/efi/boot
 
@@ -32,9 +32,12 @@ build-bootloader:
 	cargo build $(if $(RELEASE),--release,) --target x86_64-unknown-uefi --bin boot
 
 build-kernel:
-	RUSTFLAGS='-C link-arg=-Tsystem/core/src/linker.ld -C relocation-model=static' cargo build $(if $(RELEASE),--release,) --target x86_64-unknown-none --bin core
+	RUSTFLAGS='-C link-arg=-Tsystem/drivers/src/kernel.ld -C relocation-model=static' cargo build $(if $(RELEASE),--release,) --target x86_64-unknown-none --bin kernel
 
-check-artifacts: build-kernel build-bootloader
+build-drivers:
+	RUSTFLAGS='-C link-arg=-Tsystem/drivers/src/driver.ld -C relocation-model=pic' cargo build $(if $(RELEASE),--release,) --target x86_64-unknown-none --bin ata
+
+check-artifacts: build-drivers build-kernel build-bootloader
 	@if [ ! -f $(BOOTLOADER_PATH) ]; then echo "Error: boot.efi not found!"; exit 1; fi
 
 esp: check-artifacts
