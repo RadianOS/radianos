@@ -41,6 +41,7 @@ build-kernel:
 	RUSTFLAGS='-C link-arg=-Tsystem/drivers/src/kernel.ld -C relocation-model=static' cargo build $(if $(RELEASE),--release,) --target x86_64-unknown-none --bin kernel
 
 build-drivers:
+	clear && objdump -t target/x86_64-unknown-none/debug/deps/libradian_core-eee6dde371a58c3d.a | awk '/a/ {print "PROVIDE( \"" $4 "\" = " $1 ");"}' | awk '!seen[$2]++' | sort
 	RUSTFLAGS='-C link-arg=-Tsystem/drivers/src/driver.ld -C relocation-model=pic' cargo build $(if $(RELEASE),--release,) --target x86_64-unknown-none --bin ata
 
 check-artifacts: build-drivers build-kernel build-bootloader
