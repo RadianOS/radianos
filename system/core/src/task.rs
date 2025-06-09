@@ -158,7 +158,7 @@ impl Manager {
         if main {
             if let Some(worker) = db.workers.get_mut(id.get_id() as usize) {
                 worker.entry_point = elf.header.pt2.entry_point();
-                kprint!("[task] entry point at {}\r\n", worker.entry_point);
+                kprint!("[task] entry point at {:016x}\r\n", worker.entry_point);
             }
         }
     }

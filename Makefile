@@ -70,7 +70,7 @@ qemu: iso
 		-drive if=pflash,format=raw,readonly=on,file=$(OVMF_CODE) \
 		-drive format=raw,file=$(ISO_FILE) \
 		-smp 4 -m 4G -cpu max -s -d unimp,guest_errors,invalid_mem,int \
-		--serial mon:stdio \
+		-monitor stdio \
 		-device qemu-xhci -device usb-kbd -audiodev pa,id=snd0 -machine pcspk-audiodev=snd0 -M q35 --no-reboot
 
 qemu-nographic: iso # yo stop allocating so much my pc only has 8G atleast allocate 2G

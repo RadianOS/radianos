@@ -82,21 +82,12 @@ fn rust_start() {
     smp::Manager::init();
     vmm::Manager::init(db);
     cpu::Manager::init();
+    task::Manager::init(db);
 
     // All of this is mostly a formality to "startup" the kernel worker and task
     db.aspaces.push(pmm::Handle::default()); //kernel space assumed :)
     let kernel_aspace = vmm::Manager::new_address_space(db, pmm::Manager::alloc_page_zeroed());
-    let _start_addr = unsafe { (&KERNEL_START) as *const _ as u64 };
-    let _end_addr = unsafe { (&KERNEL_END) as *const _ as u64 };
-    vmm::Manager::map(
-        db,
-        kernel_aspace,
-        0,
-        0,
-        512 + 1,
-        vmm::Page::PRESENT | vmm::Page::READ_WRITE,
-    );
-    vmm::Manager::evil_function_do_not_call(db, kernel_aspace);
+    vmm::Manager::reload_cr3(db, kernel_aspace);
     let start_task = policy::Action::default().with(policy::Action::START_TASK);
     let kernel_worker = task::Manager::new_worker(db, kernel_aspace);
     let kernel_task = task::Manager::new_task(db, kernel_worker).unwrap();
@@ -120,6 +111,8 @@ fn rust_start() {
     let user_worker = task::Manager::new_worker(db, user_aspace);
     let user_task = task::Manager::new_task(db, user_worker).unwrap();
     task::Manager::load_elf_into_worker(db, user_worker, elf_bytes, true);
+    vmm::Manager::reload_cr3(db, user_aspace);
+    task::Manager::switch_to_usermode(0x200000);
 
     // Enable interrupts :)
     cpu::Manager::set_interrupts::<true>();
@@ -194,7 +187,7 @@ fn rust_start() {
                                         flags as u64,
                                     );
                                     if s.starts_with("map_r") {
-                                        vmm::Manager::evil_function_do_not_call(db, kernel_aspace);
+                                        vmm::Manager::reload_cr3(db, kernel_aspace);
                                     }
                                 } else {
                                     kprint!("invalid flags");
@@ -209,7 +202,7 @@ fn rust_start() {
                         kprint!("invalid vaddr");
                     }
                 } else if s.starts_with("tlb_reload") {
-                    vmm::Manager::evil_function_do_not_call(db, kernel_aspace);
+                    vmm::Manager::reload_cr3(db, kernel_aspace);
                 } else if s.starts_with("rule_list") {
                     policy::PolicyEngine::for_each_policy_rule(db, |rule| {
                         kprint!("- {:?}\r\n", rule);

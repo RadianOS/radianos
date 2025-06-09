@@ -38,7 +38,19 @@ impl Manager {
 
     pub fn new_address_space(db: &mut db::Database, pgtable: pmm::Handle) -> AddressSpaceHandle {
         db.aspaces.push(pgtable);
-        AddressSpaceHandle((db.aspaces.len() - 1) as u16)
+        let aspace = AddressSpaceHandle((db.aspaces.len() - 1) as u16);
+        //let _start_addr = unsafe { (&KERNEL_START) as *const _ as u64 };
+        //let _end_addr = unsafe { (&KERNEL_END) as *const _ as u64 };
+        // We live in the fucking lower half, congrats -- now we get to pay the consequences
+        Self::map(
+            db,
+            aspace,
+            0,
+            0,
+            512,
+            Page::PRESENT | Page::READ_WRITE,
+        );
+        aspace
     }
 
     pub fn map(
@@ -83,9 +95,9 @@ impl Manager {
     }
 
     /// Reloads entire TLB because fuck you
-    pub fn evil_function_do_not_call(db: &db::Database, aspace: AddressSpaceHandle) {
+    pub fn reload_cr3(db: &db::Database, aspace: AddressSpaceHandle) {
         let table = db.aspaces[aspace.0 as usize].get_mut() as u64;
-        kprint!("loading table at {table}\r\n");
+        kprint!("loading table at {table:016x}\r\n");
         unsafe {
             core::arch::asm!(
                 "mov cr3, {}",

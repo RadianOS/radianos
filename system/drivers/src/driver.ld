@@ -1,6 +1,6 @@
 ENTRY(driver_main);
 MEMORY {
-    ram (wxa) : ORIGIN = 0x100000, LENGTH = 32M
+    ram (wxa) : ORIGIN = 0x200000, LENGTH = 32M
 }
 PHDRS {
     text PT_LOAD;

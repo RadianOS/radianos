@@ -220,8 +220,12 @@ impl Manager {
     }
 
     unsafe extern "x86-interrupt" fn dummy_int_handler(stack_frame: InterruptStackFrame) {
-        let _ = stack_frame; // Prevent unused variable warning
-        kprint!("wora wora!\r\n");
+        unsafe {
+            kprint!("CS={:0x}, FLAGS={:0x}, IP={:0x}, SP={:0x}, SS={:0x}\r\n", (&raw const stack_frame.cs).read_unaligned(), (&raw const stack_frame.flags).read_unaligned(), (&raw const stack_frame.ip).read_unaligned(),
+            (&raw const stack_frame.sp).read_unaligned(), (&raw const stack_frame.ss).read_unaligned()
+        );
+        }
+        crate::abort();
     }
 
     /// Call `reload_idt` to see reflected changes
