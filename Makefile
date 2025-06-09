@@ -38,6 +38,7 @@ build-bootloader:
 	cargo build $(if $(RELEASE),--release,) --target x86_64-unknown-uefi --bin boot
 
 build-kernel:
+	clang -ffreestanding -nostdlib -O2 -Wall -T ./system/drivers/src/driver.ld ./system/drivers/src/test.c -o ./system/drivers/src/test.elf
 	RUSTFLAGS='-C link-arg=-Tsystem/drivers/src/kernel.ld -C relocation-model=static' cargo build $(if $(RELEASE),--release,) --target x86_64-unknown-none --bin kernel
 
 build-drivers:
