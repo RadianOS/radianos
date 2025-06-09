@@ -80,6 +80,7 @@ struct ConsoleState<'a> {
     current_aspace: vmm::AddressSpaceHandle,
     current_actor: db::ObjectHandle,
     current_task: task::TaskHandle,
+    current_user: db::ObjectHandle,
 }
 
 struct Command {
@@ -87,7 +88,7 @@ struct Command {
     desc: &'static str,
     handler: fn(&mut ConsoleState, &str),
 }
-const COMMANDS: [Command; 19] = [
+const COMMANDS: [Command; 21] = [
     Command{
         name: "help",
         desc: "get help",
@@ -172,7 +173,7 @@ const COMMANDS: [Command; 19] = [
         name: "rule_list",
         desc: "list policy rules",
         handler: |state, s| {
-            policy::PolicyEngine::for_each_policy_rule(state.db, |rule| {
+            policy::Manager::for_each_policy_rule(state.db, |rule| {
                 kprint!("- {:?}\r\n", rule);
             });
         }
@@ -220,7 +221,7 @@ const COMMANDS: [Command; 19] = [
             let mut split = s.split_whitespace();
             if let Some(index) = split.next() {
                 if let Ok(index) = index.parse::<u16>() {
-                    policy::PolicyEngine::remove_rule(state.db, policy::PolicyRuleHandle(index));
+                    policy::Manager::remove_rule(state.db, policy::PolicyRuleHandle(index));
                 } else {
                     kprint!("invalid number\r\n");
                 }
@@ -299,7 +300,7 @@ const COMMANDS: [Command; 19] = [
         handler: |state, s| {
             let mut split = s.split_whitespace();
             if let Some(Some(rip)) = split.next().map(parse_literal) {
-                kprint!("jumping to {:016x}", rip);
+                kprint!("jumping to {:016x}\r\n", rip);
                 task::Manager::switch_to_usermode(rip as u64);
             }
         }
@@ -328,6 +329,24 @@ const COMMANDS: [Command; 19] = [
             cpu::Manager::set_interrupts::<false>();
         }
     },
+    Command{
+        name: "users",
+        desc: "list users",
+        handler: |state, s| {
+            policy::Manager::for_each_user(state.db, |user| {
+                kprint!("- {}", user.get_name());
+            });
+        }
+    },
+    Command{
+        name: "groups",
+        desc: "list groups",
+        handler: |state, s| {
+            policy::Manager::for_each_group(state.db, |group| {
+                kprint!("- {}", group.get_name());
+            });
+        }
+    },
 ];
 
 #[unsafe(no_mangle)]
@@ -338,7 +357,9 @@ fn rust_start() {
     smp::Manager::init();
     vmm::Manager::init(db);
     cpu::Manager::init();
+    policy::Manager::init(db);
     task::Manager::init(db);
+    vfs::Manager::init(db);
 
     // All of this is mostly a formality to "startup" the kernel worker and task
     db.aspaces.push(pmm::Handle::default()); //kernel space assumed :)
@@ -347,8 +368,8 @@ fn rust_start() {
     let start_task = policy::Action::default().with(policy::Action::START_TASK);
     let kernel_worker = task::Manager::new_worker(db, kernel_aspace);
     let kernel_task = task::Manager::new_task(db, kernel_worker).unwrap();
-    policy::PolicyEngine::add_rule(db, policy::PolicyRule::default()); //default rule
-    policy::PolicyEngine::add_rule(
+    policy::Manager::add_rule(db, policy::PolicyRule::default()); //default rule
+    policy::Manager::add_rule(
         db,
         policy::PolicyRule {
             subject: kernel_worker,
@@ -356,10 +377,9 @@ fn rust_start() {
             capabilities: policy::Capability::new().with(policy::Capability::WRITE_LOG),
         },
     );
-    let res = policy::PolicyEngine::check_action(db, kernel_worker, start_task);
+    let res = policy::Manager::check_action(db, kernel_worker, start_task);
     assert_eq!(kernel_worker, db.find_from_str("worker_0").unwrap());
     kprint!("[policy] check policy? {res}\r\n");
-    vfs::Manager::init(db);
 
     // Enable interrupts :)
     //cpu::Manager::set_interrupts::<true>();
@@ -367,7 +387,14 @@ fn rust_start() {
     let logo = include_str!("logo.txt");
     let mut last_char = ' ';
     for c in logo.chars() {
-        if c != last_char {
+        if c == '\n' || c == '\r' {
+            if c != last_char {
+                last_char = c;
+                kprint!("\x1b[0;0m\r\n");
+            } else {
+                kprint!("\r\n");
+            }
+        } else if c != last_char {
             last_char = c;
             kprint!(
                 "{}",
@@ -381,8 +408,6 @@ fn rust_start() {
                 }
             );
             kprint!("{}", c);
-        } else if c == '\n' || c == '\r' {
-            kprint!("\r\n");
         } else {
             kprint!("{}", c);
         }
@@ -395,12 +420,16 @@ fn rust_start() {
         current_aspace: kernel_aspace,
         current_node: vfs::NodeHandle::default(),
         current_task: task::TaskHandle::default(),
+        current_user: db::ObjectHandle::default(),
         db,
     };
     loop {
         let mut line = [0u8; 128];
         let mut index = 0;
-        kprint!("RadianOS>");
+
+        let user_name = policy::Manager::get_user(state.db, state.current_user).get_name();
+        let hostname = "hostname";
+        kprint!("RadianOS:{user_name}@{hostname}>");
         loop {
             let b = DebugSerial::get_byte();
             if b == b'\r' || index >= line.len() {

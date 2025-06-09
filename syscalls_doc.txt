@@ -1,0 +1,38 @@
+interrupt vector => 0xf0
+
+[IN] rax = #id of syscall
+[IN] r9 = arg1
+[IN] r10 = arg2
+[IN] r11 = arg3
+[IN] r12 = arg4
+[OUT] r15 = return value
+
+#id     ?
+0x600   signal abort
+0x601   get errno
+    r15 errno
+0x602   exit
+    r9 code
+0x603   getpid
+    r15 pid
+0x700   yield now
+0x701   set name
+    r9 virtaddr name to &CStr
+0x702   sleep
+    r9 secs
+    r10 nanos
+0x703   spawn
+    r9 entrypoint
+    r10 stack
+    r15 tid
+0x704   available-parallelism
+    r15 count
+0x705   join
+    r9 tid
+0x800   alloc
+    r9 size
+    r10 size
+0x801   dealloc
+    r9 ptr
+    r10 size
+    r11 align

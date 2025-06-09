@@ -12,9 +12,11 @@ impl ObjectHandle {
     pub const NONE: u16 = 0;
     pub const WORKER: u16 = 1;
     pub const ACTOR: u16 = 2;
+    pub const USER: u16 = 3;
+    pub const GROUP: u16 = 4;
     //???
-    pub const ADDRESS_SPACE: u16 = 3;
-    pub const VFS_NODE: u16 = 4;
+    pub const ADDRESS_SPACE: u16 = 10;
+    pub const VFS_NODE: u16 = 11;
     pub const fn new<const TYPE: u16>(id: u16) -> Self {
         Self{
             id,
@@ -27,6 +29,8 @@ impl ObjectHandle {
 }
 
 pub struct Database {
+    pub users: StaticVec<policy::User, 16>,
+    pub groups: StaticVec<policy::Group, 8>,
     pub workers: StaticVec<task::Worker, 64>,
     pub policy_rule: StaticVec<policy::PolicyRule, 128>,
     pub vfs_nodes: StaticVec<vfs::Node, 128>,
@@ -67,6 +71,20 @@ impl Database {
                 Some(ObjectHandle {
                     id: offset as u16,
                     type_: ObjectHandle::WORKER,
+                })
+            } else {
+                None
+            }
+        } else if s.starts_with("user_") {
+            let offset = s
+                .strip_prefix("user_")
+                .unwrap()
+                .parse::<usize>()
+                .unwrap_or_default();
+            if offset < self.users.len() {
+                Some(ObjectHandle {
+                    id: offset as u16,
+                    type_: ObjectHandle::USER,
                 })
             } else {
                 None
