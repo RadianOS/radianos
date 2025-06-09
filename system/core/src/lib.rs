@@ -1,3 +1,4 @@
+#![allow(internal_features)]
 #![no_std]
 #![feature(str_from_raw_parts)]
 #![feature(lang_items)]
@@ -7,16 +8,16 @@
 
 use core::str;
 
-pub mod policy;
-pub mod pmm;
 pub mod containers;
-pub mod db;
-pub mod vfs;
-pub mod prelude;
-pub mod vmm;
-pub mod smp;
 pub mod cpu;
+pub mod db;
+pub mod pmm;
+pub mod policy;
+pub mod prelude;
+pub mod smp;
 pub mod task;
+pub mod vfs;
+pub mod vmm;
 
 #[macro_export]
 macro_rules! dense_bitfield {
@@ -80,11 +81,15 @@ macro_rules! kprint {
 #[macro_export]
 macro_rules! const_assert {
     ($x:expr $(,)?) => {
-        #[allow(unknown_lints, eq_op)]
-        const _: [(); 0 - !{ const ASSERT: bool = $x; ASSERT } as usize] = [];
+        #[allow(unknown_lints, clippy::eq_op)]
+        const _: [(); 0 - !{
+            const ASSERT: bool = $x;
+            ASSERT
+        } as usize] = [];
     };
 }
 
+#[cfg(not(test))]
 #[panic_handler]
 pub fn panic(info: &core::panic::PanicInfo) -> ! {
     if let Some(loc) = info.location() {
@@ -113,6 +118,7 @@ impl core::fmt::Write for DebugSerial {
 }
 impl DebugSerial {
     pub fn get_byte() -> u8 {
+        #[allow(unused_assignments)]
         let mut byte = 0;
         unsafe {
             core::arch::asm!(
@@ -135,21 +141,47 @@ impl DebugSerial {
 }
 
 #[lang = "eh_personality"]
+#[cfg(not(test))]
 extern "C" fn eh_personality() {}
 
+/// Fills the first `n` bytes of the memory area pointed to by `s` with the constant byte `c`.
+///
+/// # Safety
+///
+/// - The caller must ensure that `s` points to a valid memory region of at least `n` bytes.
+/// - The memory region must be writable and properly aligned.
+/// - Undefined behavior may result if these conditions are not met.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn memset(s: *mut core::ffi::c_void, c: core::ffi::c_int, n: core::ffi::c_size_t) -> *mut core::ffi::c_void {
+pub unsafe extern "C" fn memset(
+    s: *mut core::ffi::c_void,
+    c: core::ffi::c_int,
+    n: core::ffi::c_size_t,
+) -> *mut core::ffi::c_void {
     for i in 0..n {
-        *(s as *mut u8).add(i) = c as u8;
+        unsafe { *(s as *mut u8).add(i) = c as u8 };
     }
     s
 }
 
+/// Copies `n` bytes from the memory area pointed to by `s2` to the memory area pointed to by `s1`.
+///
+/// # Safety
+///
+/// - Both `s1` and `s2` must be valid pointers to memory regions of at least `n` bytes.
+/// - The memory regions must not overlap.
+/// - The memory regions must be properly aligned for the operations performed.
+/// - The caller must ensure all invariants required by the implementation are upheld.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn memcpy(s1: *mut core::ffi::c_void, s2: *const core::ffi::c_void, n: core::ffi::c_size_t) -> *mut core::ffi::c_void {
+pub unsafe extern "C" fn memcpy(
+    s1: *mut core::ffi::c_void,
+    s2: *const core::ffi::c_void,
+    n: core::ffi::c_size_t,
+) -> *mut core::ffi::c_void {
     if n != 0 {
-        let s1_slice = unsafe { core::slice::from_raw_parts_mut(s1.cast::<core::mem::MaybeUninit<u8>>(), n) };
-        let s2_slice = unsafe { core::slice::from_raw_parts(s2.cast::<core::mem::MaybeUninit<u8>>(), n) };
+        let s1_slice =
+            unsafe { core::slice::from_raw_parts_mut(s1.cast::<core::mem::MaybeUninit<u8>>(), n) };
+        let s2_slice =
+            unsafe { core::slice::from_raw_parts(s2.cast::<core::mem::MaybeUninit<u8>>(), n) };
         use core::mem::MaybeUninit;
         let s1_addr = s1.addr();
         let s2_addr = s2.addr();
@@ -167,7 +199,9 @@ pub unsafe extern "C" fn memcpy(s1: *mut core::ffi::c_void, s2: *const core::ffi
         let prefix_len = chunk_align_offset.min(n);
 
         // Copy "prefix" bytes
-        for (s1_elem, s2_elem) in core::iter::zip(&mut s1_slice[..prefix_len], &s2_slice[..prefix_len]) {
+        for (s1_elem, s2_elem) in
+            core::iter::zip(&mut s1_slice[..prefix_len], &s2_slice[..prefix_len])
+        {
             *s1_elem = *s2_elem;
         }
 
@@ -201,7 +235,9 @@ pub unsafe extern "C" fn memcpy(s1: *mut core::ffi::c_void, s2: *const core::ffi
             let s2_middle_and_suffix = &s2_slice[prefix_len..];
             match chunk_size {
                 1 => {
-                    for (s1_elem, s2_elem) in core::iter::zip(s1_middle_and_suffix, s2_middle_and_suffix) {
+                    for (s1_elem, s2_elem) in
+                        core::iter::zip(s1_middle_and_suffix, s2_middle_and_suffix)
+                    {
                         *s1_elem = *s2_elem;
                     }
                 }
@@ -226,35 +262,48 @@ pub unsafe extern "C" fn memcpy(s1: *mut core::ffi::c_void, s2: *const core::ffi
     s1
 }
 
+/// Compares the first `n` bytes of the memory areas pointed to by `s1` and `s2`.
+///
+/// Returns zero if they are equal, or the difference between the first differing bytes.
+///
+/// # Safety
+///
+/// - Both `s1` and `s2` must be valid pointers to memory regions of at least `n` bytes.
+/// - The memory regions must be properly aligned for the operations performed.
+/// - The caller must ensure all invariants required by the implementation are upheld.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn memcmp(s1: *const core::ffi::c_void, s2: *const core::ffi::c_void, n: usize) -> core::ffi::c_int {
+pub unsafe extern "C" fn memcmp(
+    s1: *const core::ffi::c_void,
+    s2: *const core::ffi::c_void,
+    n: usize,
+) -> core::ffi::c_int {
     use core::mem;
     let (div, rem) = (n / mem::size_of::<usize>(), n % mem::size_of::<usize>());
     let mut a = s1 as *const usize;
     let mut b = s2 as *const usize;
     for _ in 0..div {
-        if *a != *b {
+        if unsafe { *a != *b } {
             for i in 0..mem::size_of::<usize>() {
-                let c = *(a as *const u8).add(i);
-                let d = *(b as *const u8).add(i);
+                let c = unsafe { *(a as *const u8).add(i) };
+                let d = unsafe { *(b as *const u8).add(i) };
                 if c != d {
                     return c as core::ffi::c_int - d as core::ffi::c_int;
                 }
             }
             unreachable!()
         }
-        a = a.offset(1);
-        b = b.offset(1);
+        a = unsafe { a.offset(1) };
+        b = unsafe { b.offset(1) };
     }
 
     let mut a = a as *const u8;
     let mut b = b as *const u8;
     for _ in 0..rem {
-        if *a != *b {
-            return *a as core::ffi::c_int - *b as core::ffi::c_int;
+        if unsafe { *a != *b } {
+            return unsafe { *a as core::ffi::c_int - *b as core::ffi::c_int };
         }
-        a = a.offset(1);
-        b = b.offset(1);
+        a = unsafe { a.offset(1) };
+        b = unsafe { b.offset(1) };
     }
     0
 }

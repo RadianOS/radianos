@@ -77,14 +77,10 @@ impl Manager {
 pub struct Handle(u16);
 impl Handle {
     pub fn get(self) -> *const u8 {
-        unsafe {
-            Manager::get_heap().byte_add(PAGE_SIZE * self.0 as usize) as *const u8
-        }
+        unsafe { Manager::get_heap().byte_add(PAGE_SIZE * self.0 as usize) as *const u8 }
     }
     pub fn get_mut(self) -> *mut u8 {
-        unsafe {
-            Manager::get_heap_mut().byte_add(PAGE_SIZE * self.0 as usize) as *mut u8
-        }
+        unsafe { Manager::get_heap_mut().byte_add(PAGE_SIZE * self.0 as usize) as *mut u8 }
     }
 }
 

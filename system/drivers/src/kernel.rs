@@ -86,9 +86,16 @@ fn rust_start() {
     // All of this is mostly a formality to "startup" the kernel worker and task
     db.aspaces.push(pmm::Handle::default()); //kernel space assumed :)
     let kernel_aspace = vmm::Manager::new_address_space(db, pmm::Manager::alloc_page_zeroed());
-    let start_addr = unsafe { (&KERNEL_START) as *const _ as u64 };
-    let end_addr = unsafe { (&KERNEL_END) as *const _ as u64 };
-    vmm::Manager::map(db, kernel_aspace, 0, 0, 512 + 1, vmm::Page::PRESENT | vmm::Page::READ_WRITE);
+    let _start_addr = unsafe { (&KERNEL_START) as *const _ as u64 };
+    let _end_addr = unsafe { (&KERNEL_END) as *const _ as u64 };
+    vmm::Manager::map(
+        db,
+        kernel_aspace,
+        0,
+        0,
+        512 + 1,
+        vmm::Page::PRESENT | vmm::Page::READ_WRITE,
+    );
     vmm::Manager::evil_function_do_not_call(db, kernel_aspace);
     let start_task = policy::Action::default().with(policy::Action::START_TASK);
     let kernel_worker = task::Manager::new_worker(db, kernel_aspace);
@@ -161,8 +168,12 @@ fn rust_start() {
                     kprint!("* write <data> - write line at current node\r\n");
                     kprint!("* rule_remove <index> - remove policy rule\r\n");
                     kprint!("* rule_list - lists all policy rules\r\n");
-                    kprint!("* map <vaddr> <paddr> <count> <flags> - map page into current ASPACE\r\n");
-                    kprint!("* map_r <vaddr> <paddr> <count> <flags> - map page into current ASPACE and reload tlb\r\n");
+                    kprint!(
+                        "* map <vaddr> <paddr> <count> <flags> - map page into current ASPACE\r\n"
+                    );
+                    kprint!(
+                        "* map_r <vaddr> <paddr> <count> <flags> - map page into current ASPACE and reload tlb\r\n"
+                    );
                     kprint!("* tlb_reload - reload cr3\r\n");
                     kprint!("* user - test usermode\r\n");
                 } else if s.starts_with("user") {
@@ -170,11 +181,18 @@ fn rust_start() {
                 } else if s.starts_with("map") {
                     let mut split = s.split_whitespace();
                     split.next();
-                    if let Some(Some(vaddr)) = split.next().map(|x| parse_literal(x)) {
-                        if let Some(Some(paddr)) = split.next().map(|x| parse_literal(x)) {
-                            if let Some(Some(count)) = split.next().map(|x| parse_literal(x)) {
-                                if let Some(Some(flags)) = split.next().map(|x| parse_literal(x)) {
-                                    vmm::Manager::map(db, kernel_aspace, paddr as u64, vaddr as u64, count, flags as u64);
+                    if let Some(Some(vaddr)) = split.next().map(parse_literal) {
+                        if let Some(Some(paddr)) = split.next().map(parse_literal) {
+                            if let Some(Some(count)) = split.next().map(parse_literal) {
+                                if let Some(Some(flags)) = split.next().map(parse_literal) {
+                                    vmm::Manager::map(
+                                        db,
+                                        kernel_aspace,
+                                        paddr as u64,
+                                        vaddr as u64,
+                                        count,
+                                        flags as u64,
+                                    );
                                     if s.starts_with("map_r") {
                                         vmm::Manager::evil_function_do_not_call(db, kernel_aspace);
                                     }

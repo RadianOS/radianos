@@ -1,7 +1,7 @@
+use crate::db;
 use crate::dense_bitfield;
 use crate::policy;
 use crate::tagged_dense_bitfield;
-use crate::db;
 
 // Define system capabilities that can be granted to components or processes.
 dense_bitfield!(
@@ -66,7 +66,11 @@ impl PolicyEngine {
         }
         false
     }
-    pub fn check_capability(db: &db::Database, subject: db::ObjectHandle, what: Capability) -> bool {
+    pub fn check_capability(
+        db: &db::Database,
+        subject: db::ObjectHandle,
+        what: Capability,
+    ) -> bool {
         for i in 1..db.policy_rule.len() {
             let r = &db.policy_rule[i];
             if r.subject == subject {

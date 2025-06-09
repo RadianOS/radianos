@@ -15,6 +15,7 @@ pub type Result = core::result::Result<usize, Error>;
 pub struct ProviderHandle(u16);
 pub struct Provider {
     write: fn(db: &mut db::Database, actor: db::ObjectHandle, data: &[u8]) -> Result,
+    #[allow(dead_code)]
     read: fn(db: &mut db::Database, actor: db::ObjectHandle, data: &mut [u8]) -> Result,
 }
 
@@ -76,7 +77,7 @@ impl Manager {
                         Err(Error::Policy)
                     }
                 },
-                read: |db, actor, data| Err(Error::Policy),
+                read: |_db, _actor, _data| Err(Error::Policy),
             },
         );
 

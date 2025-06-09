@@ -1,8 +1,11 @@
 use crate::{const_assert, kprint};
 
 const KERNEL_CODE_SEGMENT: usize = 0x08;
+#[allow(dead_code)]
 const KERNEL_DATA_SEGMENT: usize = 0x10;
+#[allow(dead_code)]
 const USER_CODE_SEGMENT: usize = 0x18;
+#[allow(dead_code)]
 const USER_DATA_SEGMENT: usize = 0x20;
 
 #[derive(Debug)]
@@ -30,7 +33,7 @@ struct InterruptDescriptor {
 }
 impl InterruptDescriptor {
     pub const fn new_zero() -> Self {
-        Self{
+        Self {
             offset_1: 0,
             offset_2: 0,
             offset_3: 0,
@@ -41,8 +44,8 @@ impl InterruptDescriptor {
         }
     }
     pub fn new(f: InterruptFn, type_attributes: u8, ist: u8) -> Self {
-        let addr = f as u64;
-        Self{
+        let addr = f as usize;
+        Self {
             offset_1: (addr & 0xffff) as u16,
             offset_2: ((addr >> 16) & 0xffff) as u16,
             offset_3: ((addr >> 32) & 0xffff_ffff) as u32,
@@ -57,16 +60,16 @@ impl InterruptDescriptor {
         Self::new(f, 0x8e, 0)
     }
     /// Trap gate
+    #[allow(dead_code)]
     pub fn new_trap_gate(f: InterruptFn) -> Self {
         Self::new(f, 0x8f, 0)
     }
 }
 
-const EXCEPT_MEMMONIC: [&'static str; 22] = [
-    "#DE", "#DB", "NMI", "#BP", "#OF", "#BR",
-    "#UD", "#NM", "#DF", "CSEG", "#TS", "#NP",
-    "#SS", "#GP", "#PF", "INTEL", "#MF", "#AC",
-    "#MC", "#XM", "#VE", "#CP",
+#[allow(dead_code)]
+const EXCEPT_MEMMONIC: [&str; 22] = [
+    "#DE", "#DB", "NMI", "#BP", "#OF", "#BR", "#UD", "#NM", "#DF", "CSEG", "#TS", "#NP", "#SS",
+    "#GP", "#PF", "INTEL", "#MF", "#AC", "#MC", "#XM", "#VE", "#CP",
 ];
 
 #[repr(C, packed)]
@@ -89,7 +92,7 @@ struct TaskStateSegment {
 }
 impl TaskStateSegment {
     pub const fn new_zero() -> Self {
-        Self{
+        Self {
             resv1: 0,
             resv2: 0,
             resv3: 0,
@@ -121,7 +124,7 @@ struct GlobalDescriptor {
 }
 impl GlobalDescriptor {
     pub const fn new_zero() -> Self {
-        Self{
+        Self {
             limit_1: 0,
             base_1: 0,
             base_2: 0,
@@ -131,7 +134,7 @@ impl GlobalDescriptor {
         }
     }
     pub const fn new(base: u64, limit: u32, access: u8, flags: u8) -> Self {
-        Self{
+        Self {
             limit_1: (limit & 0xffff) as u16,
             base_1: (base & 0xffff) as u16,
             base_2: ((base >> 16) & 0xff) as u8,
@@ -145,7 +148,9 @@ impl GlobalDescriptor {
         let lower = Self::new(base, limit, access, flags);
         let mut upper = GlobalDescriptor::new_zero();
         unsafe {
-            ((&raw mut upper) as *mut u32).add(0).write((base >> 32) as u32);
+            ((&raw mut upper) as *mut u32)
+                .add(0)
+                .write((base >> 32) as u32);
         }
         (lower, upper)
     }
@@ -168,7 +173,7 @@ impl Manager {
             "lea rax, 2f",
             "push rax",
             "retfq",
-        "2:",
+            "2:",
             "mov ax, 0x10",
             "mov ds, ax",
             "mov es, ax",
@@ -207,14 +212,16 @@ impl Manager {
     fn load_idt(idt: *mut [InterruptDescriptor]) {
         unsafe {
             let addr = (*idt).as_ptr() as u64;
-            GLOBAL_IDT_R.limit = (core::mem::size_of::<InterruptDescriptor>() * idt.len()) as u16 - 1;
+            GLOBAL_IDT_R.limit =
+                (core::mem::size_of::<InterruptDescriptor>() * idt.len()) as u16 - 1;
             GLOBAL_IDT_R.base = addr;
             Self::load_idt_thunk();
         }
     }
 
     unsafe extern "x86-interrupt" fn dummy_int_handler(stack_frame: InterruptStackFrame) {
-        kprint!("wora wora {:?}!\r\n", stack_frame);
+        let _ = stack_frame; // Prevent unused variable warning
+        kprint!("wora wora!\r\n");
     }
 
     /// Call `reload_idt` to see reflected changes
@@ -228,7 +235,8 @@ impl Manager {
         const_assert!(core::mem::size_of::<GlobalDescriptor>() == 64 / 8);
         kprint!("[cpu] loading new gdt\r\n");
         unsafe {
-            let (low, high) = GlobalDescriptor::new_tss((&raw const GLOBAL_TSS) as u64, 0x89, 0x0);
+            let (low, high) =
+                GlobalDescriptor::new_tss((&raw const GLOBAL_TSS) as u64, 0x89, 0x0);
             GLOBAL_GDT[5] = low;
             GLOBAL_GDT[6] = high;
             Self::load_gdt(&raw mut GLOBAL_GDT);
@@ -256,25 +264,19 @@ unsafe extern "C" {
 // Globals
 static mut GLOBAL_TSS: TaskStateSegment = TaskStateSegment::new_zero();
 static mut GLOBAL_GDT: [GlobalDescriptor; 7] = [
-    GlobalDescriptor::new_zero(), //null
+    GlobalDescriptor::new_zero(),                 //null
     GlobalDescriptor::new(0, 0xfffff, 0x9a, 0xa), //kernel code
     GlobalDescriptor::new(0, 0xfffff, 0x92, 0xc), //kernel data
     GlobalDescriptor::new(0, 0xfffff, 0xfa, 0xa), //user code
     GlobalDescriptor::new(0, 0xfffff, 0xf2, 0xc), //user data
-    GlobalDescriptor::new_zero(), //tss (low)
-    GlobalDescriptor::new_zero(), //tss (high)
+    GlobalDescriptor::new_zero(),                 //tss (low)
+    GlobalDescriptor::new_zero(),                 //tss (high)
 ];
 static mut GLOBAL_IDT: [InterruptDescriptor; 256] = [InterruptDescriptor::new_zero(); 256];
 
 /// Thanks fucking rust for being useless and not allowing to
 /// place statics with pre-initialized linker values ffs, C can, why you can't?
 #[unsafe(no_mangle)]
-static mut GLOBAL_GDT_R: TableDescriptor = TableDescriptor{
-    limit: 0,
-    base: 0,
-};
+static mut GLOBAL_GDT_R: TableDescriptor = TableDescriptor { limit: 0, base: 0 };
 #[unsafe(no_mangle)]
-static mut GLOBAL_IDT_R: TableDescriptor = TableDescriptor{
-    limit: 0,
-    base: 0,
-};
+static mut GLOBAL_IDT_R: TableDescriptor = TableDescriptor { limit: 0, base: 0 };
