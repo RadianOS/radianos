@@ -359,6 +359,38 @@ const COMMANDS: [Command; 22] = [
     },
 ];
 
+pub fn levenshtein_distance(s1: &str, s2: &str) -> usize {
+    if s1.len() >= 16 || s2.len() >= 16 {
+        return 0;
+    }
+    let insertion_cost = 1;
+    let deletion_cost = 1;
+    let subst_cost = 1;
+    if s1.is_empty() || s2.is_empty() {
+        [s1.len(), s2.len()][(s1.is_empty()) as usize]
+    } else {
+        let mut dist = [[0u32; 16]; 16];
+        for i in 1..s1.len() {
+            dist[i][0] = i as u32;
+        }
+        for i in 1..s2.len() {
+            dist[0][i] = i as u32;
+        }
+        for j in 1..s2.len() {
+            for i in 1..s1.len() {
+                let cost = if s1.as_bytes()[i] == s2.as_bytes()[j] {
+                    0
+                } else {
+                    subst_cost
+                };
+                let x = (dist[i - 1][j] + deletion_cost).min(dist[i][j - 1] + insertion_cost);
+                dist[i][j] = (dist[i - 1][j - 1] + cost).min(x);
+            }
+        }
+        dist[s1.len() - 1][s2.len() - 1] as usize
+    }
+}
+
 #[unsafe(no_mangle)]
 fn rust_start() {
     pmm::Manager::init();
@@ -452,7 +484,20 @@ fn rust_start() {
                         let args = split.next().unwrap_or("");
                         (c.handler)(&mut state, args);
                     } else {
-                        kprint!("unknown command <{}>\r\n", s);
+                        let mut min_dist = usize::MAX;
+                        let mut min_cmd = None;
+                        for c in COMMANDS.iter() {
+                            let dist = levenshtein_distance(c.name, cmd);
+                            if dist < min_dist {
+                                min_dist = dist;
+                                min_cmd = Some(c);
+                            }
+                        }
+                        if let Some(c) = min_cmd {
+                            kprint!("maybe you meant <{}>?\r\n", c.name);
+                        } else {
+                            kprint!("unknown command <{}>\r\n", s);
+                        }
                     }
                 }
                 // Free queue :)
