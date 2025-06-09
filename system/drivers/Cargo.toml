@@ -6,6 +6,3 @@ edition = "2024"
 [[bin]]
 name = "ata"
 path = "src/ata.rs"
-
-[dependencies]
-radian_core = { path = "../core" }

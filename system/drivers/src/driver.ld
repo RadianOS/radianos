@@ -1,4 +1,4 @@
-ENTRY(driver_main);
+ENTRY(main);
 MEMORY {
     ram (wxa) : ORIGIN = 0x200000, LENGTH = 32M
 }

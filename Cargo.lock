@@ -89,9 +89,6 @@ dependencies = [
 [[package]]
 name = "radian_drivers"
 version = "0.1.0"
-dependencies = [
- "radian_core",
-]
 
 [[package]]
 name = "syn"

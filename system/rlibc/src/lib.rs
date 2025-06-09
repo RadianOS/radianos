@@ -1,8 +1,7 @@
 #![no_std]
-#![no_main]
 #![feature(lang_items)]
 
-use core::arch::asm;
+pub mod prelude;
 
 #[cfg(not(test))]
 #[panic_handler]
@@ -25,11 +24,3 @@ extern "C" fn abort() -> ! {
 #[lang = "eh_personality"]
 #[cfg(not(test))]
 extern "C" fn eh_personality() {}
-
-pub fn main() {
-    loop {
-        unsafe {
-            asm!("hlt");
-        }
-    }
-}
