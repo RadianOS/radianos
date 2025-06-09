@@ -131,7 +131,12 @@ fn rust_start() {
     kprint!("check policy? {}\r\n", res);
     vfs::Manager::init(db);
 
-    test_usermode();
+    let elf_bytes = include_bytes!("test.elf");
+
+    let user_aspace = vmm::Manager::new_address_space(db, pmm::Manager::alloc_page_zeroed());
+    let user_worker = task::Manager::new_worker(db, user_aspace);
+    let user_task = task::Manager::new_task(db, user_worker).unwrap();
+    task::Manager::load_elf_into_worker(db, user_worker, elf_bytes, true);
 
     // Enable interrupts :)
     cpu::Manager::set_interrupts::<true>();
@@ -183,6 +188,9 @@ fn rust_start() {
                     kprint!("* map <vaddr> <paddr> <count> <flags> - map page into current ASPACE\r\n");
                     kprint!("* map_r <vaddr> <paddr> <count> <flags> - map page into current ASPACE and reload tlb\r\n");
                     kprint!("* tlb_reload - reload cr3\r\n");
+                    kprint!("* user - test usermode\r\n");
+                } else if s.starts_with("user") {
+                    test_usermode();
                 } else if s.starts_with("map") {
                     let mut split = s.split_whitespace();
                     split.next();

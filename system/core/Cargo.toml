@@ -7,3 +7,4 @@ edition = "2024"
 crate-type = ["staticlib", "rlib"]
 
 [dependencies]
+xmas-elf = "0.10.0"
