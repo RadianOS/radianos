@@ -30,7 +30,7 @@ fn boot_efi_main() -> Status {
     let handle = get_handle_for_protocol::<Output>().unwrap();
     let mut output = open_protocol_exclusive::<Output>(handle).unwrap();
     output.clear().expect("Failed to clear screen");
-    boot_print!("Booting Radian OS...\r\n");
+    boot_print!("Booting Radian OS v0.0.5...\r\n");
     // This will fail because we don't have a kernel yet lol
     let (entry_point, kernel_entry) = load_kernel("\\EFI\\BOOT\\KERNEL");
     boot_print!("Kernel entry point: 0x{:x}\r\n", kernel_entry as usize);
