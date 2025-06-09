@@ -64,6 +64,39 @@ fn parse_literal(a: &str) -> Option<usize> {
     }
 }
 
+#[unsafe(naked)]
+#[unsafe(no_mangle)]
+unsafe extern "C" fn test_usermode_thunk() {
+    core::arch::naked_asm!(
+    "2:",
+        "pause",
+        "jmp 2b"
+    );
+}
+
+#[unsafe(no_mangle)]
+fn test_usermode() {
+    unsafe {
+        core::arch::asm!(
+            "mov rcx, 0xc0000082",
+            "wrmsr",
+            "mov rcx, 0xc0000080",
+            "rdmsr",
+            "or eax, 1",
+            "wrmsr",
+            "mov rcx, 0xc0000081",
+            "rdmsr",
+            "mov edx, 0x00180008",
+            "wrmsr",
+            "lea rcx, test_usermode_thunk",
+            "mov r11, 0x202",
+            "sysretq",
+            options(nostack),
+            options(noreturn)
+        );
+    }
+}
+
 #[unsafe(no_mangle)]
 fn rust_start() {
     pmm::Manager::init();
@@ -97,6 +130,8 @@ fn rust_start() {
 
     kprint!("check policy? {}\r\n", res);
     vfs::Manager::init(db);
+
+    test_usermode();
 
     // Enable interrupts :)
     cpu::Manager::set_interrupts::<true>();
