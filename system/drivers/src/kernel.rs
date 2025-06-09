@@ -79,6 +79,7 @@ struct ConsoleState<'a> {
     current_node: vfs::NodeHandle,
     current_aspace: vmm::AddressSpaceHandle,
     current_actor: db::ObjectHandle,
+    current_task: task::TaskHandle,
 }
 
 struct Command {
@@ -86,7 +87,16 @@ struct Command {
     desc: &'static str,
     handler: fn(&mut ConsoleState, &str),
 }
-const COMMANDS: [Command; 12] = [
+const COMMANDS: [Command; 17] = [
+    Command{
+        name: "help",
+        desc: "get help",
+        handler: |state, s| {
+            for c in COMMANDS.iter() {
+                kprint!("* {}: {}\r\n", c.name, c.desc);
+            }
+        }
+    },
     Command{
         name: "list",
         desc: "list all nodes",
@@ -103,7 +113,6 @@ const COMMANDS: [Command; 12] = [
         desc: "<vaddr/paddr> <count> <flags>",
         handler: |state, s| {
             let mut split = s.split_whitespace();
-            split.next();
             if let Some(Some(addr)) = split.next().map(parse_literal) {
                 if let Some(Some(count)) = split.next().map(parse_literal) {
                     if let Some(Some(flags)) = split.next().map(parse_literal) {
@@ -132,7 +141,6 @@ const COMMANDS: [Command; 12] = [
         desc: "<vaddr> <paddr> <count> <flags>",
         handler: |state, s| {
             let mut split = s.split_whitespace();
-            split.next();
             if let Some(Some(vaddr)) = split.next().map(parse_literal) {
                 if let Some(Some(paddr)) = split.next().map(parse_literal) {
                     if let Some(Some(count)) = split.next().map(parse_literal) {
@@ -181,7 +189,6 @@ const COMMANDS: [Command; 12] = [
         desc: "change node",
         handler: |state, s| {
             let mut split = s.split_whitespace();
-            split.next();
             if let Some(name) = split.next() {
                 if name == ".." {
                     let parent = vfs::Manager::get_node(state.db, state.current_node).get_parent();
@@ -211,7 +218,6 @@ const COMMANDS: [Command; 12] = [
         desc: "<index>",
         handler: |state, s| {
             let mut split = s.split_whitespace();
-            split.next();
             if let Some(index) = split.next() {
                 if let Ok(index) = index.parse::<u16>() {
                     policy::PolicyEngine::remove_rule(state.db, policy::PolicyRuleHandle(index));
@@ -235,7 +241,6 @@ const COMMANDS: [Command; 12] = [
         desc: "<data> to current node",
         handler: |state, s| {
             let mut split = s.split_whitespace();
-            split.next();
             if let Some(name) = split.next() {
                 let handle = vfs::Manager::get_node(state.db, state.current_node).get_provider();
                 let res = vfs::Manager::invoke_provider_write(
@@ -258,12 +263,55 @@ const COMMANDS: [Command; 12] = [
         }
     },
     Command{
-        name: "help",
-        desc: "get help",
+        name: "aspace",
+        desc: "<id> make new address space",
         handler: |state, s| {
-            for c in COMMANDS.iter() {
-                kprint!("* {}: {}\r\n", c.name, c.desc);
+            state.current_aspace = vmm::Manager::new_address_space(state.db, pmm::Manager::alloc_page_zeroed());
+            kprint!("new aspace {:?}\r\n", state.current_aspace);
+        }
+    },
+    Command{
+        name: "worker",
+        desc: "[id] make new worker or set",
+        handler: |state, s| {
+            let mut split = s.split_whitespace();
+            if let Some(Some(index)) = split.next().map(parse_literal) {
+                state.current_actor = db::ObjectHandle::new::<{db::ObjectHandle::WORKER}>(index as u16);
+                kprint!("set {:?}\r\n", state.current_actor);
+            } else {
+                state.current_actor = task::Manager::new_worker(state.db, state.current_aspace);
+                kprint!("new {:?}\r\n", state.current_actor);
             }
+        }
+    },
+    Command{
+        name: "new_task",
+        desc: "make new task in worker",
+        handler: |state, s| {
+            let handle = task::Manager::new_task(state.db, state.current_actor).unwrap();
+            state.current_task = handle;
+            kprint!("new {:?}\r\n", state.current_task);
+        }
+    },
+    Command{
+        name: "rip3_to",
+        desc: "jump to <addr>",
+        handler: |state, s| {
+            let mut split = s.split_whitespace();
+            if let Some(Some(rip)) = split.next().map(parse_literal) {
+                kprint!("jumping to {:016x}", rip);
+                task::Manager::switch_to_usermode(rip as u64);
+            }
+        }
+    },
+    Command{
+        name: "test_elf",
+        desc: "test load elf",
+        handler: |state, s| {
+            let elf_bytes = include_bytes!("test.elf");
+            task::Manager::load_elf_into_worker(state.db, state.current_actor, elf_bytes, true);
+            vmm::Manager::reload_cr3(state.db, state.current_aspace);
+            task::Manager::switch_to_usermode(0x200000);
         }
     },
 ];
@@ -299,14 +347,6 @@ fn rust_start() {
     kprint!("[policy] check policy? {res}\r\n");
     vfs::Manager::init(db);
 
-    let elf_bytes = include_bytes!("test.elf");
-    let user_aspace = vmm::Manager::new_address_space(db, pmm::Manager::alloc_page_zeroed());
-    let user_worker = task::Manager::new_worker(db, user_aspace);
-    let user_task = task::Manager::new_task(db, user_worker).unwrap();
-    task::Manager::load_elf_into_worker(db, user_worker, elf_bytes, true);
-    vmm::Manager::reload_cr3(db, user_aspace);
-    task::Manager::switch_to_usermode(0x200000);
-
     // Enable interrupts :)
     //cpu::Manager::set_interrupts::<true>();
 
@@ -340,22 +380,26 @@ fn rust_start() {
         current_actor: db.find_from_str("worker_0").unwrap(),
         current_aspace: kernel_aspace,
         current_node: vfs::NodeHandle::default(),
+        current_task: task::TaskHandle::default(),
         db,
     };
     loop {
         let mut line = [0u8; 128];
         let mut index = 0;
-        kprint!("\r\n");
         kprint!("RadianOS>");
         loop {
             let b = DebugSerial::get_byte();
             if b == b'\r' || index >= line.len() {
-                let s = unsafe { str::from_raw_parts(line.as_ptr(), index) };
                 kprint!("\r\n");
-                for c in COMMANDS.iter() {
-                    if s.starts_with(c.name) {
-                        (c.handler)(&mut state, s);
-                        break;
+
+                let s = unsafe { str::from_raw_parts(line.as_ptr(), index) };
+                let mut split = s.split_whitespace();
+                if let Some(cmd) = split.next() {
+                    if let Some(c) = COMMANDS.iter().find(|&c| c.name.eq_ignore_ascii_case(cmd)) {
+                        let args = split.next().unwrap_or("");
+                        (c.handler)(&mut state, args);
+                    } else {
+                        kprint!("unknown command <{}>\r\n", s);
                     }
                 }
                 break;
