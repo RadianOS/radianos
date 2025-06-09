@@ -3,7 +3,7 @@
 #![feature(str_from_raw_parts)]
 
 use core::str;
-use radian_core::{gdt, prelude::*, smp, vmm};
+use radian_core::{cpu, prelude::*, smp, vmm};
 
 /// Do not remove these or bootloader fails due to 0-sized section, thanks
 #[allow(dead_code)]
@@ -71,7 +71,7 @@ fn rust_start() {
     let db = db::Database::get_mut();
     smp::Manager::init();
     vmm::Manager::init(db);
-    gdt::Manager::init();
+    cpu::Manager::init();
 
     // Linear map the kernel into the process
     db.aspace_pgtable.push(pmm::Handle::default()); //kernel space assumed :)
@@ -98,6 +98,9 @@ fn rust_start() {
         policy::PolicyEngine::check_action(db, db.find_from_str("worker_0").unwrap(), start_task);
     kprint!("check policy? {}\r\n", res);
     vfs::Manager::init(db);
+
+    // Enable interrupts :)
+    cpu::Manager::set_interrupts::<true>();
 
     let logo = include_str!("logo.txt");
     let mut last_char = ' ';
