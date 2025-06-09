@@ -61,13 +61,14 @@ impl Manager {
         flags: u64,
     ) {
         let index = [
-            ((vaddr >> 39) & Page::FLAG_MASK) as usize,
-            ((vaddr >> 30) & Page::FLAG_MASK) as usize,
-            ((vaddr >> 21) & Page::FLAG_MASK) as usize,
-            ((vaddr >> 12) & Page::FLAG_MASK) as usize,
+            ((vaddr >> 39) % 512) as usize,
+            ((vaddr >> 30) % 512) as usize,
+            ((vaddr >> 21) % 512) as usize,
+            ((vaddr >> 12) % 512) as usize,
         ];
         let mut table = db.aspaces[aspace.0 as usize].get_mut() as *mut Page;
         for i in 0..index.len() {
+            //kprint!("[vmm] walker {:0x}\r\n", index[i]);
             unsafe {
                 let entry = table.add(index[i]);
                 if i == index.len() - 1 {

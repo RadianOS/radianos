@@ -86,7 +86,7 @@ struct Command {
     desc: &'static str,
     handler: fn(&mut ConsoleState, &str),
 }
-const COMMANDS: [Command; 11] = [
+const COMMANDS: [Command; 12] = [
     Command{
         name: "list",
         desc: "list all nodes",
@@ -96,6 +96,35 @@ const COMMANDS: [Command; 11] = [
                 let name = node.get_name();
                 kprint!("- {}\r\n", name);
             });
+        }
+    },
+    Command{
+        name: "mapl",
+        desc: "<vaddr/paddr> <count> <flags>",
+        handler: |state, s| {
+            let mut split = s.split_whitespace();
+            split.next();
+            if let Some(Some(addr)) = split.next().map(parse_literal) {
+                if let Some(Some(count)) = split.next().map(parse_literal) {
+                    if let Some(Some(flags)) = split.next().map(parse_literal) {
+                        vmm::Manager::map(
+                            state.db,
+                            state.current_aspace,
+                            addr as u64,
+                            addr as u64,
+                            count,
+                            flags as u64,
+                        );
+                        vmm::Manager::reload_cr3(state.db, state.current_aspace);
+                    } else {
+                        kprint!("invalid flags\r\n");
+                    }
+                } else {
+                    kprint!("invalid count\r\n");
+                }
+            } else {
+                kprint!("invalid addr\r\n");
+            }
         }
     },
     Command{
@@ -270,13 +299,13 @@ fn rust_start() {
     kprint!("[policy] check policy? {res}\r\n");
     vfs::Manager::init(db);
 
-    // let elf_bytes = include_bytes!("test.elf");
-    // let user_aspace = vmm::Manager::new_address_space(db, pmm::Manager::alloc_page_zeroed());
-    // let user_worker = task::Manager::new_worker(db, user_aspace);
-    // let user_task = task::Manager::new_task(db, user_worker).unwrap();
-    // task::Manager::load_elf_into_worker(db, user_worker, elf_bytes, true);
-    // vmm::Manager::reload_cr3(db, user_aspace);
-    // task::Manager::switch_to_usermode(0x200000);
+    let elf_bytes = include_bytes!("test.elf");
+    let user_aspace = vmm::Manager::new_address_space(db, pmm::Manager::alloc_page_zeroed());
+    let user_worker = task::Manager::new_worker(db, user_aspace);
+    let user_task = task::Manager::new_task(db, user_worker).unwrap();
+    task::Manager::load_elf_into_worker(db, user_worker, elf_bytes, true);
+    vmm::Manager::reload_cr3(db, user_aspace);
+    task::Manager::switch_to_usermode(0x200000);
 
     // Enable interrupts :)
     //cpu::Manager::set_interrupts::<true>();
@@ -326,6 +355,7 @@ fn rust_start() {
                 for c in COMMANDS.iter() {
                     if s.starts_with(c.name) {
                         (c.handler)(&mut state, s);
+                        break;
                     }
                 }
                 break;
