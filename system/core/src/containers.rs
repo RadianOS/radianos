@@ -1,5 +1,6 @@
 use core::ops::{Index, IndexMut};
 
+#[derive(Debug)]
 pub struct StaticVec<T, const N: usize> {
     inner: [T; N],
     size: usize,

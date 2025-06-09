@@ -3,7 +3,7 @@
 #![feature(str_from_raw_parts)]
 
 use core::str;
-use radian_core::{cpu, prelude::*, smp, vmm};
+use radian_core::{cpu, prelude::*, smp, vmm, task};
 
 /// Do not remove these or bootloader fails due to 0-sized section, thanks
 #[allow(dead_code)]
@@ -73,29 +73,28 @@ fn rust_start() {
     vmm::Manager::init(db);
     cpu::Manager::init();
 
-    // Linear map the kernel into the process
-    db.aspace_pgtable.push(pmm::Handle::default()); //kernel space assumed :)
+    // All of this is mostly a formality to "startup" the kernel worker and task
+    db.aspaces.push(pmm::Handle::default()); //kernel space assumed :)
     let kernel_aspace = vmm::Manager::new_address_space(db, pmm::Manager::alloc_page_zeroed());
     let start_addr = unsafe { (&KERNEL_START) as *const _ as u64 };
     let end_addr = unsafe { (&KERNEL_END) as *const _ as u64 };
     vmm::Manager::map(db, kernel_aspace, 0, 0, 512 + 1, vmm::Page::PRESENT | vmm::Page::READ_WRITE);
     vmm::Manager::evil_function_do_not_call(db, kernel_aspace);
-
-    kprint!("creating worker #0\r\n");
     let start_task = policy::Action::default().with(policy::Action::START_TASK);
-    db.workers.push(db::Worker::new()); //kernel worker
+    let kernel_worker = task::Manager::new_worker(db, kernel_aspace);
+    let kernel_task = task::Manager::new_task(db, kernel_worker).unwrap();
     policy::PolicyEngine::add_rule(db, policy::PolicyRule::default()); //default rule
     policy::PolicyEngine::add_rule(
         db,
         policy::PolicyRule {
-            subject: db.find_from_str("worker_0").unwrap(),
+            subject: kernel_worker,
             allowed: start_task,
             capabilities: policy::Capability::new().with(policy::Capability::WRITE_LOG),
         },
     );
+    let res = policy::PolicyEngine::check_action(db, kernel_worker, start_task);
+    assert_eq!(kernel_worker, db.find_from_str("worker_0").unwrap());
 
-    let res =
-        policy::PolicyEngine::check_action(db, db.find_from_str("worker_0").unwrap(), start_task);
     kprint!("check policy? {}\r\n", res);
     vfs::Manager::init(db);
 

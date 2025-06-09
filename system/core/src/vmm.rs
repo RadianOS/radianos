@@ -21,7 +21,7 @@ pub struct AddressSpaceHandle(u16);
 pub struct Manager;
 impl Manager {
     pub fn init(_: &mut db::Database) {
-        //db.aspace_pgtable[i] = pmm::Manager::alloc_page();
+        //db.aspaces[i] = pmm::Manager::alloc_page();
     }
 
     fn get_current_cr3() -> u64 {
@@ -36,8 +36,8 @@ impl Manager {
     }
 
     pub fn new_address_space(db: &mut db::Database, pgtable: pmm::Handle) -> AddressSpaceHandle {
-        db.aspace_pgtable.push(pgtable);
-        AddressSpaceHandle((db.aspace_pgtable.len() - 1) as u16)
+        db.aspaces.push(pgtable);
+        AddressSpaceHandle((db.aspaces.len() - 1) as u16)
     }
 
     pub fn map(db: &mut db::Database, aspace: AddressSpaceHandle, mut paddr: u64, mut vaddr: u64, count: usize, flags: u64) {
@@ -49,7 +49,7 @@ impl Manager {
                 ((vaddr >> 12) & Page::FLAG_MASK) as usize
             ];
             //kprint!("\r\nv={vaddr:016x}::p={paddr:016x}");
-            let mut table = db.aspace_pgtable[aspace.0 as usize].get_mut() as *mut Page;
+            let mut table = db.aspaces[aspace.0 as usize].get_mut() as *mut Page;
             for i in 0..index.len() {
                 //kprint!("walk #{:04x} ", index[i]);
                 unsafe {
@@ -76,7 +76,7 @@ impl Manager {
 
     /// Reloads entire TLB because fuck you
     pub fn evil_function_do_not_call(db: &db::Database, aspace: AddressSpaceHandle) {
-        let table = db.aspace_pgtable[aspace.0 as usize].get_mut() as u64;
+        let table = db.aspaces[aspace.0 as usize].get_mut() as u64;
         kprint!("loading table at {table}\r\n");
         unsafe{core::arch::asm!(
             "mov cr3, {}",

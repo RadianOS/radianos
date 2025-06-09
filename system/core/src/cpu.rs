@@ -5,6 +5,7 @@ const KERNEL_DATA_SEGMENT: usize = 0x10;
 const USER_CODE_SEGMENT: usize = 0x18;
 const USER_DATA_SEGMENT: usize = 0x20;
 
+#[derive(Debug)]
 #[repr(C, packed)]
 pub struct InterruptStackFrame {
     ip: usize,
@@ -212,7 +213,7 @@ impl Manager {
     }
 
     unsafe extern "x86-interrupt" fn dummy_int_handler(stack_frame: InterruptStackFrame) {
-        kprint!("wora wora!\r\n");
+        kprint!("wora wora {:?}!\r\n", stack_frame);
     }
 
     /// Call `reload_idt` to see reflected changes

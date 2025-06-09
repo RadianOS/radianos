@@ -16,6 +16,7 @@ pub mod prelude;
 pub mod vmm;
 pub mod smp;
 pub mod cpu;
+pub mod task;
 
 #[macro_export]
 macro_rules! dense_bitfield {
