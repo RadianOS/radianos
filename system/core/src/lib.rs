@@ -5,6 +5,7 @@
 #![feature(c_size_t)]
 #![feature(pointer_is_aligned_to)]
 #![feature(abi_x86_interrupt)]
+#![feature(allocator_api)]
 
 use core::str;
 
@@ -18,6 +19,7 @@ pub mod smp;
 pub mod task;
 pub mod vfs;
 pub mod vmm;
+//pub mod TbsAlloc;
 
 #[macro_export]
 macro_rules! dense_bitfield {

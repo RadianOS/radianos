@@ -33,11 +33,6 @@ SECTIONS {
         PROVIDE(STACK_TOP = .);
     } >ram AT>ram :bss
 
-    /* mini page heap do not disturb */
-    . = ALIGN(4096);
-    PROVIDE(HEAP_START = .);
-    PROVIDE(HEAP_END = ORIGIN(ram) + LENGTH(ram));
-
     /* The . pcrel is not reliable, just do it by hand! */
     PROVIDE(KERNEL_START = ORIGIN(ram));
     PROVIDE(KERNEL_END = ORIGIN(ram) + LENGTH(ram));

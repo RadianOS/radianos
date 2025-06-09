@@ -21,6 +21,16 @@ impl<T, const N: usize> StaticVec<T, N> {
         Self::default()
     }
 
+    pub const fn new_with_default(default: T) -> Self
+    where
+        T: Copy
+    {
+        Self {
+            inner: [default; N],
+            size: 0,
+        }
+    }
+
     pub fn push(&mut self, data: T) {
         self.inner[self.size] = data;
         self.size += 1;
