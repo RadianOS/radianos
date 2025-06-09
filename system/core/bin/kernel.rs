@@ -33,10 +33,13 @@ fn tree_traverse_node(db: &db::Database, handle: vfs::NodeHandle, level: usize) 
     let tree_print_node = |handle, level| {
         let node = vfs::Manager::get_node(db, handle);
         let name = node.get_name();
-        let level_prefix = [
-            "-", "--", "---", "----", "-----", "------", "-------", "--------",
-        ][level];
-        kprint!("{} {}\r\n", level_prefix, name);
+        if level > 0 {
+            for i in 0..level - 1 {
+                kprint!("│   ");
+            }
+            kprint!("└── ");
+        }
+        kprint!("{}\r\n", name);
     };
     let mut walk_had_children = false;
     vfs::Manager::for_each_children(db, handle, |handle| {
@@ -478,7 +481,7 @@ fn rust_start() {
         let mut index = 0;
 
         let user_name = policy::Manager::get_user(state.db, state.current_user).get_name();
-        let hostname = "hostname";
+        let hostname = "radiant-pc";
         kprint!("\x1b[1;31mRadianOS:\x1b[1;33m{user_name}@{hostname}\x1b[0;0m>");
         loop {
             let b = DebugSerial::get_byte();

@@ -16,7 +16,7 @@ checksum = "1b8e56985ec62d17e9c1001dc89c88ecd7dc08e47eba5ec7c29c7b5eeecde967"
 
 [[package]]
 name = "boot"
-version = "0.1.0"
+version = "0.0.2"
 dependencies = [
  "panic-abort",
  "uefi",
@@ -81,7 +81,7 @@ dependencies = [
 
 [[package]]
 name = "radian_core"
-version = "0.1.0"
+version = "0.1.4"
 dependencies = [
  "xmas-elf",
 ]
