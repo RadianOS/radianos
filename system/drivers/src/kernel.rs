@@ -87,7 +87,7 @@ struct Command {
     desc: &'static str,
     handler: fn(&mut ConsoleState, &str),
 }
-const COMMANDS: [Command; 17] = [
+const COMMANDS: [Command; 19] = [
     Command{
         name: "help",
         desc: "get help",
@@ -312,6 +312,20 @@ const COMMANDS: [Command; 17] = [
             task::Manager::load_elf_into_worker(state.db, state.current_actor, elf_bytes, true);
             vmm::Manager::reload_cr3(state.db, state.current_aspace);
             task::Manager::switch_to_usermode(0x200000);
+        }
+    },
+    Command{
+        name: "cli",
+        desc: "disable interrupts",
+        handler: |state, s| {
+            cpu::Manager::set_interrupts::<false>();
+        }
+    },
+    Command{
+        name: "sti",
+        desc: "enable interrupts",
+        handler: |state, s| {
+            cpu::Manager::set_interrupts::<false>();
         }
     },
 ];

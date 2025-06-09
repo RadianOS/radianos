@@ -6,7 +6,6 @@ char data_thunk = 1;
 const char rodata_thunk = 4;
 __attribute__((naked)) void driver_main() {
     asm volatile(
-        "pause\r\n"
         "movq %rax, %rbx\r\n"
         "movq %rcx, %rax\r\n"
         "movq %rdx, %rax\r\n"

@@ -3,7 +3,7 @@ use crate::{db, kprint, pmm};
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Page(u64);
 impl Page {
-    pub const FLAG_MASK: u64 = 0x3ff;
+    pub const FLAG_MASK: u64 = 0xfff;
 
     pub const PRESENT: u64 = 0x01;
     pub const READ_WRITE: u64 = 0x02;
@@ -53,6 +53,9 @@ impl Manager {
         aspace
     }
 
+    /// Maps a single page, if the page already exists it will simply go into the next level
+    /// if the flags of the page differ, the flags will be updated but the TLB will not be flushed
+    /// so the changes wont be reflected globally
     pub fn map_single(
         db: &mut db::Database,
         aspace: AddressSpaceHandle,
@@ -75,10 +78,13 @@ impl Manager {
                     *entry = Page((paddr & !Page::FLAG_MASK) | flags);
                 } else {
                     table = if (*entry).is_present() {
+                        if (*entry).0 & Page::FLAG_MASK != flags {
+                            (*entry).0 = ((*entry).0 & !Page::FLAG_MASK) | flags;
+                        }
                         ((*entry).0 & !Page::FLAG_MASK) as *mut Page
                     } else {
                         let pd_addr = pmm::Manager::alloc_page_zeroed().get() as u64;
-                        kprint!("[vmm] alloc new addr {pd_addr:016x}\r\n");
+                        //kprint!("[vmm] alloc new addr {pd_addr:016x}\r\n");
                         assert_eq!(pd_addr & Page::FLAG_MASK, 0); //page aligned please
                         *entry = Page(pd_addr | flags);
                         pd_addr as *mut Page

@@ -152,7 +152,7 @@ impl Manager {
                     }
                 }
                 kprint!("[task] {:016x} => {virt_addr:016x}; file_size={file_size}, file_offset={file_offset}, mem_size={mem_size}\r\n", ptr as u64);
-                vmm::Manager::map_single(db, aspace, ptr as u64, (virt_addr + i * pmm::PAGE_SIZE) as u64, vmm::Page::PRESENT | vmm::Page::READ_WRITE);
+                vmm::Manager::map_single(db, aspace, ptr as u64, (virt_addr + i * pmm::PAGE_SIZE) as u64, vmm::Page::PRESENT | vmm::Page::READ_WRITE | vmm::Page::USER_SUPERVISOR);
             }
         }
         //let entry_function: EntryFn = unsafe { core::mem::transmute(entry_point) };
