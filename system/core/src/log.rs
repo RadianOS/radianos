@@ -1,6 +1,12 @@
 mod asm;
 use asm::{inportb, outportb};
 
+/*
+How to use:
+log::error(" filepath/file.rs: I don't like this variable "); [ERROR]  filepath/file.rs: I don't like this variable.
+log:warning(" filepath/file.rs: I'm so bad at rust."); -> [WARNING]  filepath/file.rs: I'm so bad at rust
+log::info(" filepath/file.rs: I'm so tired, stop with this.") -> [INFO]  filepath/file.rs: I'm so tired of this.
+*/
 
 mod log {
   fn serial_ready() -> bool {
