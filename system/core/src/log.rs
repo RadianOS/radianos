@@ -9,7 +9,7 @@ fn serial_ready() -> u8 {
 
 fn serial_write(c: char) -> bool {
   while !serial_ready() {}
-  outportb(0x3F8, c);
+  outportb(0x3F8, c as u8);
 }
 
 fn log_init() {
