@@ -109,10 +109,10 @@ impl Manager {
         }
     }
 
-    fn invalidate_single(addr: u64) {
+    pub fn invalidate_single(addr: u64) {
         unsafe {
             core::arch::asm!(
-                "invlpg ({})",
+                "invlpg [{0}]",
                 in(reg) addr,
                 options(nostack)
             )

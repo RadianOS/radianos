@@ -18,8 +18,6 @@ pub struct InterruptStackFrame {
     ss: usize,
 }
 
-type InterruptFn = unsafe extern "x86-interrupt" fn(stack_frame: InterruptStackFrame);
-
 #[derive(Debug, Clone, Copy)]
 #[repr(C, packed)]
 struct InterruptDescriptor {
@@ -43,8 +41,8 @@ impl InterruptDescriptor {
             zero: 0,
         }
     }
-    pub fn new(f: InterruptFn, type_attributes: u8, ist: u8) -> Self {
-        let addr = f as usize;
+    pub fn new(addr: u64, type_attributes: u8, ist: u8) -> Self {
+        assert_eq!(addr % 16, 0);
         Self {
             offset_1: (addr & 0xffff) as u16,
             offset_2: ((addr >> 16) & 0xffff) as u16,
@@ -56,13 +54,13 @@ impl InterruptDescriptor {
         }
     }
     /// Interrupt gate
-    pub fn new_interrupt_gate(f: InterruptFn) -> Self {
-        Self::new(f, 0x8e, 0)
+    pub fn new_interrupt_gate(addr: u64) -> Self {
+        Self::new(addr, 0x8e, 0)
     }
     /// Trap gate
     #[allow(dead_code)]
-    pub fn new_trap_gate(f: InterruptFn) -> Self {
-        Self::new(f, 0x8f, 0)
+    pub fn new_trap_gate(addr: u64) -> Self {
+        Self::new(addr, 0x8f, 0)
     }
 }
 
@@ -229,9 +227,17 @@ impl Manager {
     }
 
     /// Call `reload_idt` to see reflected changes
-    pub fn register_interrupt(f: InterruptFn, irq: usize) {
+    /// SAFETY: Address must not be below or in `.text.int_vector`
+    pub fn register_interrupt(addr: u64, irq: usize) {
+        assert_eq!(addr % 16, 0);
         unsafe {
-            GLOBAL_IDT[irq] = InterruptDescriptor::new_interrupt_gate(f);
+            let base_rip = GLOBAL_IDT_ASM.0[irq].as_ptr() as u64 + 7;
+            let b = u32::to_le_bytes((addr - base_rip).try_into().unwrap());
+            GLOBAL_IDT_ASM.0[irq][3] = b[0];
+            GLOBAL_IDT_ASM.0[irq][4] = b[1];
+            GLOBAL_IDT_ASM.0[irq][5] = b[2];
+            GLOBAL_IDT_ASM.0[irq][6] = b[3];
+            crate::vmm::Manager::invalidate_single((&raw mut GLOBAL_IDT_ASM) as u64);
         }
     }
 
@@ -246,8 +252,13 @@ impl Manager {
             Self::load_gdt(&raw mut GLOBAL_GDT);
         }
         kprint!("[cpu] loading new idt\r\n");
+        kprint!("[cpu] addr={:0x}", Self::dummy_int_handler as u64);
         for i in 0..256 {
-            Self::register_interrupt(Self::dummy_int_handler, i);
+            unsafe {
+                GLOBAL_IDT_ASM.0[i][1] = i as u8; //update pushed value (WHY IS THIS AT RUNTIME?) fuck rust x2
+                GLOBAL_IDT[i] = InterruptDescriptor::new_interrupt_gate(GLOBAL_IDT_ASM.0[i].as_ptr() as u64);
+            }
+            Self::register_interrupt(Self::dummy_int_handler as u64, i);
         }
         Self::load_idt(&raw mut GLOBAL_IDT);
         kprint!("[cpu] set tss\r\n");
@@ -265,7 +276,20 @@ impl Manager {
 unsafe extern "C" {
     unsafe static STACK_TOP: u8;
 }
+
 // Globals
+#[repr(align(16))]
+struct IsrAsmCode([[u8; 16]; 256]);
+#[unsafe(no_mangle)]
+#[unsafe(link_section = ".text.int_vector")]
+static mut GLOBAL_IDT_ASM: IsrAsmCode = IsrAsmCode([[
+    0x6a, 0x00, /* push <irq> */
+    0xe9, 0x00, 0x00, 0x00, /* jmp rip + <offs32> */
+    0x48, 0x83, 0xc4, 0x04, /* add rsp, $0x04 */
+    0x48, 0xcf, /* iretq */
+    0x90, 0x90, 0x90, 0x90, /* nop4 */
+]; 256]);
+// Evil TSS and GDT
 static mut GLOBAL_TSS: TaskStateSegment = TaskStateSegment::new_zero();
 static mut GLOBAL_GDT: [GlobalDescriptor; 7] = [
     GlobalDescriptor::new_zero(),                 //null
@@ -277,7 +301,6 @@ static mut GLOBAL_GDT: [GlobalDescriptor; 7] = [
     GlobalDescriptor::new_zero(),                 //tss (high)
 ];
 static mut GLOBAL_IDT: [InterruptDescriptor; 256] = [InterruptDescriptor::new_zero(); 256];
-
 /// Thanks fucking rust for being useless and not allowing to
 /// place statics with pre-initialized linker values ffs, C can, why you can't?
 #[unsafe(no_mangle)]
