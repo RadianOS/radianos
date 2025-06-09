@@ -39,10 +39,10 @@ macro_rules! dense_bitfield {
 
 #[macro_export]
 macro_rules! tagged_dense_bitfield {
-    ($name:ident $repr:ident $tag:ident = $tag_mask:expr, $($cap:ident = $value:expr,)*) => {
+    ($qual:tt $name:ident : $repr:ident { $tag:ident = $tag_mask:expr, $($cap:ident = $value:expr,)* }) => {
         #[repr(C)]
         #[derive(Default, Debug, Clone, Copy, Eq, PartialEq, Hash)]
-        pub struct $name($repr);
+        $qual struct $name($repr);
         impl $name {
             $(pub const $cap: $repr = $value;)*
             const $tag: $repr = $tag_mask;
@@ -143,3 +143,24 @@ impl DebugSerial {
 #[lang = "eh_personality"]
 #[cfg(not(test))]
 extern "C" fn eh_personality() {}
+
+#[macro_export]
+macro_rules! weak_typed_enum {
+    ($qual:tt $name:ident : $repr:ty { $($elem:ident = $value:expr,)+ }) => {
+        #[derive(Default, Debug, Clone, Copy, Ord, Eq, PartialEq, PartialOrd)]
+        $qual struct $name($repr);
+        impl $name {
+            $(pub const $elem: $repr = $value;)+
+        }
+        impl From<u32> for $name {
+            fn from(t: $repr) -> Self {
+                Self(t)
+            }
+        }
+        impl Into<u32> for $name {
+            fn into(self) -> $repr {
+                self.0
+            }
+        }
+    };
+}

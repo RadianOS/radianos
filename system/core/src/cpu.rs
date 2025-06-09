@@ -11,12 +11,33 @@ const USER_DATA_SEGMENT: usize = 0x20;
 #[derive(Debug)]
 #[repr(C, packed)]
 pub struct InterruptStackFrame {
-    ip: usize,
-    cs: usize,
-    flags: usize,
-    sp: usize,
-    ss: usize,
+    gpr: [u64; 16],
+    irq: u64,
+    //
+    rip: u64,
+    cs: u64,
+    rflags: u64,
+    rsp: u64,
 }
+impl InterruptStackFrame {
+    pub const R15: usize = 8 * 0;
+    pub const R14: usize = 8 * 1;
+    pub const R13: usize = 8 * 2;
+    pub const R12: usize = 8 * 3;
+    pub const R11: usize = 8 * 4;
+    pub const R10: usize = 8 * 5;
+    pub const R9: usize = 8 * 6;
+    pub const R8: usize = 8 * 7;
+    pub const RDI: usize = 8 * 8;
+    pub const RSI: usize = 8 * 9;
+    pub const RDX: usize = 8 * 10;
+    pub const RCX: usize = 8 * 11;
+    pub const RBX: usize = 8 * 12;
+    pub const RAX: usize = 8 * 13;
+    pub const RBP: usize = 8 * 14;
+    pub const RSP: usize = 8 * 15;
+}
+
 
 #[derive(Debug, Clone, Copy)]
 #[repr(C, packed)]
@@ -160,6 +181,48 @@ struct TableDescriptor {
     base: u64,
 }
 
+macro_rules! standard_interrupt_body {
+    ($call:literal) => {
+        core::arch::naked_asm!(
+            "push rsp", //8
+            "push rbp", //16
+            "push rax", //24
+            "push rbx", //32
+            "push rcx", //40
+            "push rdx", //48
+            "push rsi", //56
+            "push rdi", //64
+            "push r8", //72
+            "push r9", //80
+            "push r10", //88
+            "push r11", //96
+            "push r12", //104
+            "push r13", //112
+            "push r14", //120
+            "push r15", //128
+            "mov rdi, rsp",
+            $call,
+            "pop r15",
+            "pop r14",
+            "pop r13",
+            "pop r12",
+            "pop r11",
+            "pop r10",
+            "pop r9",
+            "pop r8",
+            "pop rdi",
+            "pop rsi",
+            "pop rdx",
+            "pop rcx",
+            "pop rbx",
+            "pop rax",
+            "pop rbp",
+            "pop rsp",
+            "iretq",
+        );
+    }
+}
+
 pub struct Manager;
 impl Manager {
     // never inlined for obvious reasons
@@ -217,19 +280,20 @@ impl Manager {
         }
     }
 
-    unsafe extern "x86-interrupt" fn dummy_int_handler(stack_frame: InterruptStackFrame) {
-        unsafe {
-            kprint!("[cpu] CS={:0x}, FLAGS={:0x}, IP={:0x}, SP={:0x}, SS={:0x}\r\n", (&raw const stack_frame.cs).read_unaligned(), (&raw const stack_frame.flags).read_unaligned(), (&raw const stack_frame.ip).read_unaligned(),
-            (&raw const stack_frame.sp).read_unaligned(), (&raw const stack_frame.ss).read_unaligned()
-        );
+    #[unsafe(naked)]
+    unsafe extern "C" fn dummy_int_handler() {
+        #[unsafe(no_mangle)]
+        fn dummy_int_handler_inner(rsp: u64) {
+            let s = unsafe{(rsp as *mut InterruptStackFrame).as_mut()}.unwrap();
+            kprint!("chto? {:?}\r\n", s);
+            crate::abort();
         }
-        crate::abort();
+        standard_interrupt_body!("call dummy_int_handler_inner");
     }
 
     /// Call `reload_idt` to see reflected changes
     /// SAFETY: Address must not be below or in `.text.int_vector`
     pub fn register_interrupt(addr: u64, irq: usize) {
-        assert_eq!(addr % 16, 0);
         unsafe {
             let base_rip = GLOBAL_IDT_ASM.0[irq].as_ptr() as u64 + 7;
             let b = u32::to_le_bytes((addr - base_rip).try_into().unwrap());
@@ -252,7 +316,6 @@ impl Manager {
             Self::load_gdt(&raw mut GLOBAL_GDT);
         }
         kprint!("[cpu] loading new idt\r\n");
-        kprint!("[cpu] addr={:0x}", Self::dummy_int_handler as u64);
         for i in 0..256 {
             unsafe {
                 GLOBAL_IDT_ASM.0[i][1] = i as u8; //update pushed value (WHY IS THIS AT RUNTIME?) fuck rust x2
@@ -285,8 +348,8 @@ struct IsrAsmCode([[u8; 16]; 256]);
 static mut GLOBAL_IDT_ASM: IsrAsmCode = IsrAsmCode([[
     0x6a, 0x00, /* push <irq> */
     0xe9, 0x00, 0x00, 0x00, /* jmp rip + <offs32> */
-    0x48, 0x83, 0xc4, 0x04, /* add rsp, $0x04 */
-    0x48, 0xcf, /* iretq */
+    0x90, 0x90, 0x90, 0x90, /* nop4 */
+    0x90, 0x90, /* nop2 */
     0x90, 0x90, 0x90, 0x90, /* nop4 */
 ]; 256]);
 // Evil TSS and GDT

@@ -58,8 +58,8 @@ fn boot_efi_main() -> Status {
         core::arch::asm!(
             "call {0}",
             in(reg) kernel_entry,
-            in("rsi") (table as *const MemoryEntry) as u64,
-            in("rdi") (memory_map.entries().len()) as u64,
+            in("rdi") (table as *const MemoryEntry) as u64,
+            in("rsi") (memory_map.entries().len()) as u64,
             options(noreturn)
         )
     }

@@ -21,12 +21,12 @@ impl Capability {
 }
 
 tagged_dense_bitfield!(
-    Action u16
+pub Action : u16 {
     ID = 0xf0,
     START_TASK = 0x01,
     ACCESS_DEVICE = 0x02,
     WRITE_TO = 0x04,
-);
+});
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct PolicyRuleHandle(pub u16);

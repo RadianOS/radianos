@@ -3,13 +3,9 @@ ifeq ($(OVMF_CODE),)
 OVMF_CODE_1 := /usr/share/OVMF/OVMF_CODE_4M.fd
 OVMF_CODE_2 := $(OVMF_PATH)/OVMF_CODE.fd #Arch
 OVMF_CODE_3 := /usr/share/OVMF/x64/OVMF_CODE.4m.fd
-OVMF_CODE := $(or $(and $(wildcard $(OVMF_CODE_1)),$(OVMF_CODE_1)),$(OVMF_CODE_2))
-endif
-ifeq ($(OVMF_VARS),)
-OVMF_VARS_1 := /usr/share/OVMF/OVMF_VARS_4M.fd
-OVMF_VARS_2 := $(OVM_PATH)/OVMF_VARS.fd #Arch
-OVMF_VARS_3 := /usr/share/OVMF/x64/OVMF_VARS_4M.fd
-OVMF_VARS := $(or $(and $(wildcard $(OVMF_VARS_1)),$(OVMF_VARS_1)),$(OVMF_VARS_2))
+OVMF_CODE_1 := $(and $(wildcard $(OVMF_CODE_1)),$(OVMF_CODE_1))
+OVMF_CODE_2 := $(and $(wildcard $(OVMF_CODE_2)),$(OVMF_CODE_2))
+OVMF_CODE := $(or $(OVMF_CODE_1),$(OVMF_CODE_2),$(OVMF_CODE_3))
 endif
 # These should be set to the full path in your .zshrc/bashrc/shrc profile, not in the makefile
 

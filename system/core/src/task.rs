@@ -31,14 +31,28 @@ pub struct Worker {
     aspace: vmm::AddressSpaceHandle,
     entry_point: u64,
     tasks: StaticVec<Task, 4>,
+    flags: u8,
 }
 impl Worker {
+    pub const SLEEP: u8 = 0x40;
+    pub const ACTIVE: u8 = 0x80;
+
     pub fn new(aspace: vmm::AddressSpaceHandle) -> Self {
         Self{
             aspace,
             entry_point: 0,
             tasks: StaticVec::new(),
+            flags: 0,
         }
+    }
+    const fn set_flag<const FLAG: u8>(&mut self, v: bool) {
+        self.flags = (self.flags & !FLAG) | [0, FLAG][v as usize];
+    }
+    pub const fn is_active(&self) -> bool {
+        self.flags & Self::ACTIVE != 0
+    }
+    pub const fn set_active(&mut self, v: bool) {
+        self.set_flag::<{Self::ACTIVE}>(v)
     }
 }
 
@@ -162,5 +176,23 @@ impl Manager {
                 kprint!("[task] entry point at {:016x}\r\n", worker.entry_point);
             }
         }
+    }
+
+    /// Simple round robin
+    pub fn scheduler_tick(db: &mut db::Database) -> db::ObjectHandle {
+        assert!(db.workers.len() > 0); //cant schedule without workers
+        let mut active_index = 0;
+        for i in 0..db.workers.len() {
+            if db.workers[i].is_active() {
+                active_index = i;
+                break;
+            }
+        }
+        let next_index = (active_index + 1) % db.workers.len();
+        if next_index != active_index {
+            db.workers[active_index].set_active(false);
+            db.workers[next_index].set_active(true);
+        }
+        db::ObjectHandle::new::<{db::ObjectHandle::WORKER}>(next_index as u16)
     }
 }

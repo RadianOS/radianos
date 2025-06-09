@@ -3,13 +3,7 @@
 #![feature(str_from_raw_parts)]
 
 use core::str;
-use radian_core::{containers::{StaticString, StaticVec}, cpu, prelude::*, smp, task, vmm};
-use crate::{
-    pmm::Manager as PmmManager,
-    cpu::Manager as CpuManager,
-    smp::Manager as SmpManager,
-    policy::Manager as PolicyManager,
-};
+use radian_core::{containers::{StaticString, StaticVec}, cpu, prelude::*, smp, task, vmm, weak_typed_enum};
 
 /// Do not remove these or bootloader fails due to 0-sized section, thanks
 #[allow(dead_code)]
@@ -18,21 +12,6 @@ static RODATA_DUMMY: u8 = 255;
 static mut DATA_DUMMY: u8 = 156;
 #[allow(dead_code)]
 static mut BSS_DUMMY: u8 = 0;
-
-#[unsafe(link_section = ".text.init")]
-#[unsafe(naked)]
-#[unsafe(no_mangle)]
-unsafe extern "C" fn naked_start() {
-    core::arch::naked_asm!(
-        "cli",
-        "lea rsp, STACK_TOP",
-        "call rust_start",
-        "2:",
-        "cli",
-        "hlt",
-        "jmp 2b"
-    );
-}
 
 /// Fine have your stack overhead
 fn tree_traverse_node(db: &db::Database, handle: vfs::NodeHandle, level: usize) -> bool {
@@ -421,8 +400,51 @@ pub fn levenshtein_distance(s1: &str, s2: &str) -> usize {
     }
 }
 
+#[repr(C)]
+struct MemoryEntry {
+    virt: u64,
+    phys: u64,
+    page_count: u64,
+    attribute: u64,
+    type_: u32,
+}
+
+weak_typed_enum!(
+pub MemoryType : u32 {
+    RESERVED =  0,
+    LOADER_CODE =  1,
+    LOADER_DATA =  2,
+    BOOT_SERVICES_CODE =  3,
+    BOOT_SERVICES_DATA =  4,
+    RUNTIME_SERVICES_CODE =  5,
+    RUNTIME_SERVICES_DATA =  6,
+    CONVENTIONAL =  7,
+    UNUSABLE =  8,
+    ACPI_RECLAIM =  9,
+    ACPI_NON_VOLATILE = 10,
+    MMIO = 11,
+    MMIO_PORT_SPACE = 12,
+    PAL_CODE = 13,
+    PERSISTENT_MEMORY = 14,
+    UNACCEPTED = 15,
+    MAX = 16,
+});
+
+#[unsafe(link_section = ".text.init")]
+#[unsafe(naked)]
 #[unsafe(no_mangle)]
-fn rust_start() {
+unsafe extern "C" fn naked_start() {
+    core::arch::naked_asm!(
+        "cli",
+        "lea rsp, STACK_TOP",
+        "call rust_start",
+    "2:",
+        "jmp 2b"
+    );
+}
+
+#[unsafe(no_mangle)]
+extern "sysv64" fn rust_start(entries: *mut MemoryEntry, entries_len: usize) {
     pmm::Manager::init();
 
     let db = db::Database::get_mut();
