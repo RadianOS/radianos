@@ -1,8 +1,6 @@
-cargo-features = ["edition2024"]
-
 [workspace]
 resolver = "3"
-members = ["boot", "system/core"]
+members = ["boot", "system/core", "system/drivers"]
 
 [profile.dev]
 panic = "abort"

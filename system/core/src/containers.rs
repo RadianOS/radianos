@@ -1,3 +1,5 @@
+use core::ops::{Index, IndexMut};
+
 pub struct StaticVec<T, const N: usize> {
     inner: [T; N],
     size: usize,
@@ -10,7 +12,6 @@ impl<T: Default, const N: usize> Default for StaticVec<T, N> {
         }
     }
 }
-
 impl<T, const N: usize> StaticVec<T, N> {
     pub fn new() -> Self where T: Default {
         Self::default()
@@ -49,5 +50,17 @@ impl<T, const N: usize> StaticVec<T, N> {
     #[inline]
     pub fn get_mut(&mut self, index: usize) -> Option<&mut T> {
         self.inner.get_mut(index)
+    }
+}
+
+impl<T, const N: usize> Index<usize> for StaticVec<T, N> {
+    type Output = T;
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.inner[index]
+    }
+}
+impl<T, const N: usize> IndexMut<usize> for StaticVec<T, N> {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        &mut self.inner[index]
     }
 }

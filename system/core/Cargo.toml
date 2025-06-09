@@ -1,12 +1,9 @@
 [package]
-name = "core"
+name = "radian_core"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 
-[profile.dev]
-panic = "abort"
-
-[profile.release]
-panic = "abort"
+[lib]
+crate-type = ["staticlib", "rlib"]
 
 [dependencies]

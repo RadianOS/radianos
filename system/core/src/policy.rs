@@ -59,7 +59,7 @@ impl PolicyEngine {
     }
     pub fn check_action(db: &db::Database, subject: db::ObjectHandle, what: Action) -> bool {
         for i in 1..db.policy_rule.len() {
-            let r = db.policy_rule.get(i).unwrap();
+            let r = &db.policy_rule[i];
             if r.subject == subject {
                 return r.allowed.contains(what);
             }
@@ -68,7 +68,7 @@ impl PolicyEngine {
     }
     pub fn check_capability(db: &db::Database, subject: db::ObjectHandle, what: Capability) -> bool {
         for i in 1..db.policy_rule.len() {
-            let r = db.policy_rule.get(i).unwrap();
+            let r = &db.policy_rule[i];
             if r.subject == subject {
                 return r.capabilities.contains(what);
             }
@@ -77,7 +77,7 @@ impl PolicyEngine {
     }
     pub fn for_each_policy_rule<F: FnMut(&policy::PolicyRule)>(db: &db::Database, mut f: F) {
         for i in 1..db.policy_rule.len() {
-            let r = db.policy_rule.get(i).unwrap();
+            let r = &db.policy_rule[i];
             if r.subject != db::ObjectHandle::default() {
                 f(r);
             }

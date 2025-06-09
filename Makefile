@@ -14,11 +14,17 @@ endif
 FAT_IMG := fat.img
 ISO_FILE := radianos.iso
 # Default to debug unless RELEASE=1 is set
-BOOTLOADER_BUILD_DIR := $(if $(RELEASE),release,debug)
-BOOTLOADER_PATH := $(CURDIR)/target/x86_64-unknown-uefi/$(BOOTLOADER_BUILD_DIR)/boot.efi
+BOOTLOADER_BUILD_DIR := $(CURDIR)/target/x86_64-unknown-uefi/$(if $(RELEASE),release,debug)
+BOOTLOADER_PATH := $(BOOTLOADER_BUILD_DIR)/boot.efi
 
-KERNEL_BUILD_DIR := $(if $(RELEASE),release,debug)
-KERNEL_PATH := $(CURDIR)/target/x86_64-unknown-none/$(KERNEL_BUILD_DIR)/core
+KERNEL_BUILD_DIR := $(CURDIR)/target/x86_64-unknown-none/$(if $(RELEASE),release,debug)
+KERNEL_PATH := $(KERNEL_BUILD_DIR)/kernel
+
+RUSTC_FLAGS := \
+	-C opt-level=3 \
+	-L $(KERNEL_BUILD_DIR)/deps \
+	--crate-type staticlib \
+	--target x86_64-unknown-none
 
 ESP_DIR := esp/efi/boot
 
@@ -29,12 +35,16 @@ run: iso
 	$(MAKE) qemu
 
 build-bootloader:
-	cargo build $(if $(RELEASE),--release,) -Zbuild-std --target x86_64-unknown-uefi --bin boot
+	cargo build $(if $(RELEASE),--release,) --target x86_64-unknown-uefi --bin boot
 
 build-kernel:
-	RUSTFLAGS='-C link-arg=-Tsystem/core/src/linker.ld -C relocation-model=static' cargo build $(if $(RELEASE),--release,) -Zbuild-std --target x86_64-unknown-none --bin core
+	RUSTFLAGS='-C link-arg=-Tsystem/drivers/src/kernel.ld -C relocation-model=static' cargo build $(if $(RELEASE),--release,) --target x86_64-unknown-none --bin kernel
 
-check-artifacts: build-kernel build-bootloader
+build-drivers:
+	clear && objdump -t target/x86_64-unknown-none/debug/deps/libradian_core-eee6dde371a58c3d.a | awk '/a/ {print "PROVIDE( \"" $4 "\" = " $1 ");"}' | awk '!seen[$2]++' | sort
+	RUSTFLAGS='-C link-arg=-Tsystem/drivers/src/driver.ld -C relocation-model=pic' cargo build $(if $(RELEASE),--release,) --target x86_64-unknown-none --bin ata
+
+check-artifacts: build-drivers build-kernel build-bootloader
 	@if [ ! -f $(BOOTLOADER_PATH) ]; then echo "Error: boot.efi not found!"; exit 1; fi
 
 esp: check-artifacts
@@ -59,14 +69,15 @@ qemu: iso
 	qemu-system-x86_64 \
 		-drive if=pflash,format=raw,readonly=on,file=$(OVMF_CODE) \
 		-drive format=raw,file=$(ISO_FILE) \
-		-smp 4 -m 4G -cpu max -s -d unimp,guest_errors \
-		-device qemu-xhci -device usb-kbd -audiodev pa,id=snd0 -machine pcspk-audiodev=snd0 --serial mon:stdio -M q35 --no-reboot
+		-smp 4 -m 4G -cpu max -s -d unimp,guest_errors,invalid_mem,int \
+		--serial mon:stdio \
+		-device qemu-xhci -device usb-kbd -audiodev pa,id=snd0 -machine pcspk-audiodev=snd0 -M q35 --no-reboot
 
 qemu-nographic: iso # yo stop allocating so much my pc only has 8G atleast allocate 2G
 	qemu-system-x86_64 \
 		-drive if=pflash,format=raw,readonly=on,file=$(OVMF_CODE) \
 		-drive format=raw,file=$(ISO_FILE) \
-		-smp 4 -m 4G -cpu max -s -d unimp,guest_errors \
+		-smp 4 -m 4G -cpu max -s -d unimp,guest_errors,invalid_mem,int \
 		-device qemu-xhci -device usb-kbd -audiodev pa,id=snd0 -machine pcspk-audiodev=snd0 -M q35 --no-reboot -nographic
 
 clean:

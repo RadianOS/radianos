@@ -1,0 +1,1 @@
+ENTRY(driver_main);

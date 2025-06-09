@@ -3,131 +3,7 @@
 #![feature(str_from_raw_parts)]
 
 use core::str;
-
-pub mod containers;
-pub mod db;
-pub mod pmm;
-pub mod policy;
-pub mod vfs;
-
-#[macro_export]
-macro_rules! dense_bitfield {
-    ($name:ident $repr:ident $($cap:ident = $value:expr,)*) => {
-        #[repr(C)]
-        #[derive(Default, Debug, Clone, Copy, Eq, PartialEq, Hash)]
-        pub struct $name($repr);
-        impl $name {
-            $(pub const $cap: $repr = $value;)*
-            pub fn contains(self, c: Self) -> bool {
-                (self.0 & c.0) == c.0
-            }
-            pub fn with(self, c: $repr) -> Self {
-                Self(self.0 | c)
-            }
-        }
-    };
-}
-
-#[macro_export]
-macro_rules! tagged_dense_bitfield {
-    ($name:ident $repr:ident $tag:ident = $tag_mask:expr, $($cap:ident = $value:expr,)*) => {
-        #[repr(C)]
-        #[derive(Default, Debug, Clone, Copy, Eq, PartialEq, Hash)]
-        pub struct $name($repr);
-        impl $name {
-            $(pub const $cap: $repr = $value;)*
-            const $tag: $repr = $tag_mask;
-            const TAG_SHIFT: $repr = 8;
-            pub fn contains(self, c: Self) -> bool {
-                (self.0 & c.0) == c.0
-            }
-            pub fn with(self, c: $repr) -> Self {
-                Self(self.0 | c)
-            }
-            pub fn set_tag(self, c: $repr) -> Self {
-                Self((self.0 & !Self::$tag) | ((c << Self::TAG_SHIFT) & Self::$tag))
-            }
-            pub fn get_tag(self) -> $repr {
-                (self.0 & Self::$tag) >> Self::TAG_SHIFT
-            }
-        }
-    };
-}
-
-#[macro_export]
-macro_rules! dense_soa_generic {
-    (struct $name:ident; $($f_name:ident: $f_repr:ty,)*) => {
-        #[repr(C)]
-        pub struct $name {
-            $(pub $f_name: $crate::containers::StaticVec<$f_repr, 64>,)*
-        }
-    }
-}
-
-struct DebugSerial;
-impl core::fmt::Write for DebugSerial {
-    fn write_str(&mut self, s: &str) -> core::fmt::Result {
-        for b in s.bytes() {
-            Self::put_byte(b);
-        }
-        Ok(())
-    }
-}
-impl DebugSerial {
-    pub fn get_byte() -> u8 {
-        let byte;
-        unsafe {
-            core::arch::asm!(
-                "in al, dx",
-                out("al") byte,
-                in("dx") 0x3f8
-            );
-        }
-        byte
-    }
-    pub fn put_byte(b: u8) {
-        unsafe {
-            core::arch::asm!(
-                "out dx, al",
-                in("al") b,
-                in("dx") 0x3f8
-            );
-        }
-    }
-}
-
-#[macro_export]
-macro_rules! kprint {
-    ($($args:tt)*) => ({
-        use core::fmt::Write;
-        let _ = write!($crate::DebugSerial{}, $($args)*);
-    });
-}
-
-#[repr(C)]
-pub struct PageHandle(u16);
-
-#[repr(C)]
-pub struct DenseBlock {
-    page_handle: PageHandle,
-}
-
-#[panic_handler]
-fn panic(info: &core::panic::PanicInfo) -> ! {
-    if let Some(loc) = info.location() {
-        kprint!("{}:{}: {}\r\n", loc.file(), loc.line(), info.message());
-    }
-    abort();
-}
-
-#[unsafe(no_mangle)]
-extern "C" fn abort() -> ! {
-    loop {
-        unsafe {
-            core::arch::asm!("pause");
-        }
-    }
-}
+use radian_core::{cpu, prelude::*, smp, vmm};
 
 /// Do not remove these or bootloader fails due to 0-sized section, thanks
 #[allow(dead_code)]
@@ -137,7 +13,7 @@ static mut DATA_DUMMY: u8 = 156;
 #[allow(dead_code)]
 static mut BSS_DUMMY: u8 = 0;
 
-#[link_section = ".text.init"]
+#[unsafe(link_section = ".text.init")]
 #[unsafe(naked)]
 #[unsafe(no_mangle)]
 unsafe extern "C" fn naked_start() {
@@ -152,11 +28,59 @@ unsafe extern "C" fn naked_start() {
     );
 }
 
+/// Fine have your stack overhead
+fn tree_traverse_node(db: &db::Database, handle: vfs::NodeHandle, level: usize) -> bool {
+    let tree_print_node = |handle, level| {
+        let node = vfs::Manager::get_node(db, handle);
+        let name = node.get_name();
+        let level_prefix = [
+            "-", "--", "---", "----", "-----", "------", "-------", "--------",
+        ][level];
+        kprint!("{} {}\r\n", level_prefix, name);
+    };
+    let mut walk_had_children = false;
+    vfs::Manager::for_each_children(db, handle, |handle| {
+        tree_print_node(handle, level);
+        tree_traverse_node(db, handle, level + 1);
+        walk_had_children = true;
+    });
+    walk_had_children
+}
+
+unsafe extern "C" {
+    unsafe static KERNEL_START: u8;
+    unsafe static KERNEL_END: u8;
+}
+
+fn parse_literal(a: &str) -> Option<usize> {
+    if a.starts_with("0x") {
+        usize::from_str_radix(a.strip_prefix("0x").unwrap(), 16).ok()
+    } else if a.starts_with("0h") {
+        usize::from_str_radix(a.strip_prefix("0h").unwrap(), 16).ok()
+    } else if a.starts_with("0b") {
+        usize::from_str_radix(a.strip_prefix("0b").unwrap(), 2).ok()
+    } else {
+        a.parse::<usize>().ok()
+    }
+}
+
 #[unsafe(no_mangle)]
 fn rust_start() {
     pmm::Manager::init();
 
     let db = db::Database::get_mut();
+    smp::Manager::init();
+    vmm::Manager::init(db);
+    cpu::Manager::init();
+
+    // Linear map the kernel into the process
+    db.aspace_pgtable.push(pmm::Handle::default()); //kernel space assumed :)
+    let kernel_aspace = vmm::Manager::new_address_space(db, pmm::Manager::alloc_page_zeroed());
+    let start_addr = unsafe { (&KERNEL_START) as *const _ as u64 };
+    let end_addr = unsafe { (&KERNEL_END) as *const _ as u64 };
+    vmm::Manager::map(db, kernel_aspace, 0, 0, 512 + 1, vmm::Page::PRESENT | vmm::Page::READ_WRITE);
+    vmm::Manager::evil_function_do_not_call(db, kernel_aspace);
+
     kprint!("creating worker #0\r\n");
     let start_task = policy::Action::default().with(policy::Action::START_TASK);
     db.workers.push(db::Worker::new()); //kernel worker
@@ -174,6 +98,9 @@ fn rust_start() {
         policy::PolicyEngine::check_action(db, db.find_from_str("worker_0").unwrap(), start_task);
     kprint!("check policy? {}\r\n", res);
     vfs::Manager::init(db);
+
+    // Enable interrupts :)
+    cpu::Manager::set_interrupts::<true>();
 
     let logo = include_str!("logo.txt");
     let mut last_char = ' ';
@@ -219,6 +146,34 @@ fn rust_start() {
                     kprint!("* write <data> - write line at current node\r\n");
                     kprint!("* rule_remove <index> - remove policy rule\r\n");
                     kprint!("* rule_list - lists all policy rules\r\n");
+                    kprint!("* map <vaddr> <paddr> <count> <flags> - map page into current ASPACE\r\n");
+                    kprint!("* map_r <vaddr> <paddr> <count> <flags> - map page into current ASPACE and reload tlb\r\n");
+                    kprint!("* tlb_reload - reload cr3\r\n");
+                } else if s.starts_with("map") {
+                    let mut split = s.split_whitespace();
+                    split.next();
+                    if let Some(Some(vaddr)) = split.next().map(|x| parse_literal(x)) {
+                        if let Some(Some(paddr)) = split.next().map(|x| parse_literal(x)) {
+                            if let Some(Some(count)) = split.next().map(|x| parse_literal(x)) {
+                                if let Some(Some(flags)) = split.next().map(|x| parse_literal(x)) {
+                                    vmm::Manager::map(db, kernel_aspace, paddr as u64, vaddr as u64, count, flags as u64);
+                                    if s.starts_with("map_r") {
+                                        vmm::Manager::evil_function_do_not_call(db, kernel_aspace);
+                                    }
+                                } else {
+                                    kprint!("invalid flags");
+                                }
+                            } else {
+                                kprint!("invalid count");
+                            }
+                        } else {
+                            kprint!("invalid paddr");
+                        }
+                    } else {
+                        kprint!("invalid vaddr");
+                    }
+                } else if s.starts_with("tlb_reload") {
+                    vmm::Manager::evil_function_do_not_call(db, kernel_aspace);
                 } else if s.starts_with("rule_list") {
                     policy::PolicyEngine::for_each_policy_rule(db, |rule| {
                         kprint!("- {:?}\r\n", rule);
@@ -251,27 +206,7 @@ fn rust_start() {
                         kprint!("missing arg\r\n");
                     }
                 } else if s.starts_with("tree") {
-                    let print_node = |level, handle| {
-                        let node = vfs::Manager::get_node(db, handle);
-                        let name = node.get_name();
-                        let level_prefix = [
-                            "-", "--", "---", "----", "-----", "------", "-------", "--------",
-                        ][level];
-                        kprint!("{} {}\r\n", level_prefix, name);
-                    };
-                    // TODO: recurse, but without the stack overhead
-                    vfs::Manager::for_each_children(db, current_node, |handle| {
-                        print_node(0, handle);
-                        vfs::Manager::for_each_children(db, handle, |handle| {
-                            print_node(1, handle);
-                            vfs::Manager::for_each_children(db, handle, |handle| {
-                                print_node(2, handle);
-                                vfs::Manager::for_each_children(db, handle, |handle| {
-                                    print_node(3, handle);
-                                });
-                            });
-                        });
-                    });
+                    tree_traverse_node(db, current_node, 0);
                 } else if s.starts_with("list") {
                     vfs::Manager::for_each_children(db, current_node, |handle| {
                         let node = vfs::Manager::get_node(db, handle);
