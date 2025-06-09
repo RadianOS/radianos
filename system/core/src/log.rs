@@ -32,4 +32,8 @@ mod log {
           serial_write(c);
     }
   }
+
+  pub fn warning(msg: Option<&str>) {
+    print("")
+  }
 }
