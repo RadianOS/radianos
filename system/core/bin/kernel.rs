@@ -3,7 +3,7 @@
 #![feature(str_from_raw_parts)]
 
 use core::str;
-use radian_core::{cpu, prelude::*, smp, vmm, task};
+use radian_core::{containers::{StaticString, StaticVec}, cpu, prelude::*, smp, task, vmm};
 
 /// Do not remove these or bootloader fails due to 0-sized section, thanks
 #[allow(dead_code)]
@@ -81,6 +81,7 @@ struct ConsoleState<'a> {
     current_actor: db::ObjectHandle,
     current_task: task::TaskHandle,
     current_user: db::ObjectHandle,
+    history_stack: StaticVec<StaticString<64>, 4>,
 }
 
 struct Command {
@@ -88,7 +89,7 @@ struct Command {
     desc: &'static str,
     handler: fn(&mut ConsoleState, &str),
 }
-const COMMANDS: [Command; 21] = [
+const COMMANDS: [Command; 22] = [
     Command{
         name: "help",
         desc: "get help",
@@ -334,7 +335,7 @@ const COMMANDS: [Command; 21] = [
         desc: "list users",
         handler: |state, s| {
             policy::Manager::for_each_user(state.db, |user| {
-                kprint!("- {}", user.get_name());
+                kprint!("- {}\r\n", user.get_name());
             });
         }
     },
@@ -343,8 +344,17 @@ const COMMANDS: [Command; 21] = [
         desc: "list groups",
         handler: |state, s| {
             policy::Manager::for_each_group(state.db, |group| {
-                kprint!("- {}", group.get_name());
+                kprint!("- {}\r\n", group.get_name());
             });
+        }
+    },
+    Command{
+        name: "history",
+        desc: "print local command history",
+        handler: |state, s| {
+            for c in 0..state.history_stack.len() {
+                kprint!("{}\r\n", state.history_stack[c].as_str());
+            }
         }
     },
 ];
@@ -421,21 +431,21 @@ fn rust_start() {
         current_node: vfs::NodeHandle::default(),
         current_task: task::TaskHandle::default(),
         current_user: db::ObjectHandle::default(),
+        history_stack: StaticVec::new(),
         db,
     };
     loop {
-        let mut line = [0u8; 128];
+        let mut line = StaticString::<64>::new();
         let mut index = 0;
 
         let user_name = policy::Manager::get_user(state.db, state.current_user).get_name();
         let hostname = "hostname";
-        kprint!("RadianOS:{user_name}@{hostname}>");
+        kprint!("\x1b[1;31mRadianOS:\x1b[1;33m{user_name}@{hostname}\x1b[0;0m>");
         loop {
             let b = DebugSerial::get_byte();
-            if b == b'\r' || index >= line.len() {
+            if b == b'\r' || index >= line.max_len() {
                 kprint!("\r\n");
-
-                let s = unsafe { str::from_raw_parts(line.as_ptr(), index) };
+                let s = line.as_str();
                 let mut split = s.split_whitespace();
                 if let Some(cmd) = split.next() {
                     if let Some(c) = COMMANDS.iter().find(|&c| c.name.eq_ignore_ascii_case(cmd)) {
@@ -445,12 +455,16 @@ fn rust_start() {
                         kprint!("unknown command <{}>\r\n", s);
                     }
                 }
+                // Free queue :)
+                state.history_stack.push_fifo(line.clone());
                 break;
             } else if b == 0x08 || b == 0x7F {
-                kprint!("\x08 \x08");
-                index = index.saturating_sub(1);
+                if index > 0 {
+                    kprint!("\x08 \x08");
+                    index -= 1;
+                }
             } else if b != 0 {
-                line[index] = b;
+                line.bytes_mut()[index] = b;
                 index += 1;
                 DebugSerial::put_byte(b);
             }

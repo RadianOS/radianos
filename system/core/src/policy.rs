@@ -1,5 +1,6 @@
 use core::str;
 
+use crate::containers::StaticString;
 use crate::db;
 use crate::dense_bitfield;
 use crate::policy;
@@ -43,36 +44,22 @@ pub struct PasswordHash {
 
 #[derive(Default, Debug)]
 pub struct User {
-    name: [u8; 16],
+    name: StaticString<16>,
     pass_hash: PasswordHash,
 }
 impl User {
     pub fn get_name(&self) -> &str {
-        let len = self
-            .name
-            .iter()
-            .enumerate()
-            .find(|&(_, c)| *c == 0)
-            .map(|(i, _)| i)
-            .unwrap_or(self.name.len());
-        unsafe { str::from_raw_parts(self.name.as_ptr(), len) }
+        self.name.as_str()
     }
 }
 
 #[derive(Default, Debug)]
 pub struct Group {
-    name: [u8; 16],
+    name: StaticString<8>,
 }
 impl Group {
     pub fn get_name(&self) -> &str {
-        let len = self
-            .name
-            .iter()
-            .enumerate()
-            .find(|&(_, c)| *c == 0)
-            .map(|(i, _)| i)
-            .unwrap_or(self.name.len());
-        unsafe { str::from_raw_parts(self.name.as_ptr(), len) }
+        self.name.as_str()
     }
 }
 
@@ -85,17 +72,13 @@ impl Manager {
     }
     pub fn new_user(db: &mut db::Database, name: &str) -> db::ObjectHandle {
         let mut obj = User::default();
-        for (i, b) in name.bytes().enumerate() {
-            obj.name[i] = b;
-        }
+        obj.name = StaticString::from_str(name);
         db.users.push(obj);
         db::ObjectHandle::new::<{db::ObjectHandle::USER}>((db.users.len() - 1) as u16)
     }
     pub fn new_group(db: &mut db::Database, name: &str) -> db::ObjectHandle {
         let mut obj = Group::default();
-        for (i, b) in name.bytes().enumerate() {
-            obj.name[i] = b;
-        }
+        obj.name = StaticString::from_str(name);
         db.groups.push(obj);
         db::ObjectHandle::new::<{db::ObjectHandle::GROUP}>((db.groups.len() - 1) as u16)
     }
