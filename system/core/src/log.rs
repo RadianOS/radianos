@@ -30,9 +30,24 @@ mod log {
     for c in msg.unwrap().chars() { // write all characters one by one.. TODO: Add formatting.
           serial_write(c);
     }
+
+    serial_write('\n');
   }
 
+  pub fn error(msg: Option<&str>) {
+    if let Some(txt) = msg {
+      print(Some(&format!("\033[31m [ERROR] \033[0m {}", txt)));
+    }
+  }
   pub fn warning(msg: Option<&str>) {
-    print("")
+    if let Some(txt) = msg {
+      print(Some(&format!("\033[95m [WARNING] \033[0m {}", txt)));
+    }
+  }
+
+  pub fn info(msg: Option<&str>) {
+    if let Some(txt) = msg {
+      print(Some(&format!("\033[96m [INFO] \033[0m {}", txt)));
+    }
   }
 }
