@@ -1,6 +1,5 @@
-mod asm_libs;
-use asm_libs::inportb;
-use asm_libs::outportb;
+mod asm;
+use asm::{inportb, outportb};
 
 
 mod log {
