@@ -3,6 +3,7 @@
 #![feature(lang_items)]
 #![feature(c_size_t)]
 #![feature(pointer_is_aligned_to)]
+#![feature(abi_x86_interrupt)]
 
 use core::str;
 
@@ -14,6 +15,7 @@ pub mod vfs;
 pub mod prelude;
 pub mod vmm;
 pub mod smp;
+pub mod gdt;
 
 #[macro_export]
 macro_rules! dense_bitfield {
@@ -72,6 +74,14 @@ macro_rules! kprint {
         use core::fmt::Write;
         let _ = write!($crate::DebugSerial{}, $($args)*);
     });
+}
+
+#[macro_export]
+macro_rules! const_assert {
+    ($x:expr $(,)?) => {
+        #[allow(unknown_lints, eq_op)]
+        const _: [(); 0 - !{ const ASSERT: bool = $x; ASSERT } as usize] = [];
+    };
 }
 
 #[panic_handler]

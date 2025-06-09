@@ -3,7 +3,7 @@
 #![feature(str_from_raw_parts)]
 
 use core::str;
-use radian_core::{prelude::*, smp, vmm};
+use radian_core::{gdt, prelude::*, smp, vmm};
 
 /// Do not remove these or bootloader fails due to 0-sized section, thanks
 #[allow(dead_code)]
@@ -71,6 +71,7 @@ fn rust_start() {
     let db = db::Database::get_mut();
     smp::Manager::init();
     vmm::Manager::init(db);
+    gdt::Manager::init();
 
     // Linear map the kernel into the process
     db.aspace_pgtable.push(pmm::Handle::default()); //kernel space assumed :)
@@ -156,9 +157,17 @@ fn rust_start() {
                                     if s.starts_with("map_r") {
                                         vmm::Manager::evil_function_do_not_call(db, kernel_aspace);
                                     }
+                                } else {
+                                    kprint!("invalid flags");
                                 }
+                            } else {
+                                kprint!("invalid count");
                             }
+                        } else {
+                            kprint!("invalid paddr");
                         }
+                    } else {
+                        kprint!("invalid vaddr");
                     }
                 } else if s.starts_with("tlb_reload") {
                     vmm::Manager::evil_function_do_not_call(db, kernel_aspace);
