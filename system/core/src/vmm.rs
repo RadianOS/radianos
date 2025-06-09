@@ -53,6 +53,40 @@ impl Manager {
         aspace
     }
 
+    pub fn map_single(
+        db: &mut db::Database,
+        aspace: AddressSpaceHandle,
+        paddr: u64,
+        vaddr: u64,
+        flags: u64,
+    ) {
+        let index = [
+            ((vaddr >> 39) & Page::FLAG_MASK) as usize,
+            ((vaddr >> 30) & Page::FLAG_MASK) as usize,
+            ((vaddr >> 21) & Page::FLAG_MASK) as usize,
+            ((vaddr >> 12) & Page::FLAG_MASK) as usize,
+        ];
+        let mut table = db.aspaces[aspace.0 as usize].get_mut() as *mut Page;
+        for i in 0..index.len() {
+            unsafe {
+                let entry = table.add(index[i]);
+                if i == index.len() - 1 {
+                    *entry = Page((paddr & !Page::FLAG_MASK) | flags);
+                } else {
+                    table = if (*entry).is_present() {
+                        ((*entry).0 & !Page::FLAG_MASK) as *mut Page
+                    } else {
+                        let pd_addr = pmm::Manager::alloc_page_zeroed().get() as u64;
+                        kprint!("[vmm] alloc new addr {pd_addr:016x}\r\n");
+                        assert_eq!(pd_addr & Page::FLAG_MASK, 0); //page aligned please
+                        *entry = Page(pd_addr | flags);
+                        pd_addr as *mut Page
+                    };
+                }
+            }
+        }
+    }
+
     pub fn map(
         db: &mut db::Database,
         aspace: AddressSpaceHandle,
@@ -62,42 +96,26 @@ impl Manager {
         flags: u64,
     ) {
         for _ in 0..count {
-            let index = [
-                ((vaddr >> 39) & Page::FLAG_MASK) as usize,
-                ((vaddr >> 30) & Page::FLAG_MASK) as usize,
-                ((vaddr >> 21) & Page::FLAG_MASK) as usize,
-                ((vaddr >> 12) & Page::FLAG_MASK) as usize,
-            ];
-            //kprint!("\r\nv={vaddr:016x}::p={paddr:016x}");
-            let mut table = db.aspaces[aspace.0 as usize].get_mut() as *mut Page;
-            for i in 0..index.len() {
-                //kprint!("walk #{:04x} ", index[i]);
-                unsafe {
-                    let entry = table.add(index[i]);
-                    if i == index.len() - 1 {
-                        *entry = Page((paddr & !Page::FLAG_MASK) | flags);
-                    } else {
-                        table = if (*entry).is_present() {
-                            ((*entry).0 & !Page::FLAG_MASK) as *mut Page
-                        } else {
-                            let pd_addr = pmm::Manager::alloc_page_zeroed().get() as u64;
-                            //kprint!("alloc new addr {pd_addr:016x} ");
-                            assert_eq!(pd_addr & Page::FLAG_MASK, 0); //page aligned please
-                            *entry = Page(pd_addr | flags);
-                            pd_addr as *mut Page
-                        };
-                    }
-                }
-            }
+            Self::map_single(db, aspace, paddr, vaddr, flags);
             paddr += 4096;
             vaddr += 4096;
+        }
+    }
+
+    fn invalidate_single(addr: u64) {
+        unsafe {
+            core::arch::asm!(
+                "invlpg ({})",
+                in(reg) addr,
+                options(nostack)
+            )
         }
     }
 
     /// Reloads entire TLB because fuck you
     pub fn reload_cr3(db: &db::Database, aspace: AddressSpaceHandle) {
         let table = db.aspaces[aspace.0 as usize].get_mut() as u64;
-        kprint!("loading table at {table:016x}\r\n");
+        kprint!("[vmm] loading table at {table:016x}\r\n");
         unsafe {
             core::arch::asm!(
                 "mov cr3, {}",

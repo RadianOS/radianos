@@ -74,6 +74,171 @@ unsafe extern "C" fn test_usermode_thunk() {
     );
 }
 
+struct ConsoleState<'a> {
+    db: &'a mut db::Database,
+    current_node: vfs::NodeHandle,
+    current_aspace: vmm::AddressSpaceHandle,
+    current_actor: db::ObjectHandle,
+}
+
+struct Command {
+    name: &'static str,
+    desc: &'static str,
+    handler: fn(&mut ConsoleState, &str),
+}
+const COMMANDS: [Command; 11] = [
+    Command{
+        name: "list",
+        desc: "list all nodes",
+        handler: |state, s| {
+            vfs::Manager::for_each_children(state.db, state.current_node, |handle| {
+                let node = vfs::Manager::get_node(state.db, handle);
+                let name = node.get_name();
+                kprint!("- {}\r\n", name);
+            });
+        }
+    },
+    Command{
+        name: "map",
+        desc: "<vaddr> <paddr> <count> <flags>",
+        handler: |state, s| {
+            let mut split = s.split_whitespace();
+            split.next();
+            if let Some(Some(vaddr)) = split.next().map(parse_literal) {
+                if let Some(Some(paddr)) = split.next().map(parse_literal) {
+                    if let Some(Some(count)) = split.next().map(parse_literal) {
+                        if let Some(Some(flags)) = split.next().map(parse_literal) {
+                            vmm::Manager::map(
+                                state.db,
+                                state.current_aspace,
+                                paddr as u64,
+                                vaddr as u64,
+                                count,
+                                flags as u64,
+                            );
+                            vmm::Manager::reload_cr3(state.db, state.current_aspace);
+                        } else {
+                            kprint!("invalid flags\r\n");
+                        }
+                    } else {
+                        kprint!("invalid count\r\n");
+                    }
+                } else {
+                    kprint!("invalid paddr\r\n");
+                }
+            } else {
+                kprint!("invalid vaddr\r\n");
+            }
+        }
+    },
+    Command{
+        name: "rule_list",
+        desc: "list policy rules",
+        handler: |state, s| {
+            policy::PolicyEngine::for_each_policy_rule(state.db, |rule| {
+                kprint!("- {:?}\r\n", rule);
+            });
+        }
+    },
+    Command{
+        name: "tlb_reload",
+        desc: "reload tlb",
+        handler: |state, s| {
+            vmm::Manager::reload_cr3(state.db, state.current_aspace);
+        }
+    },
+    Command{
+        name: "cd",
+        desc: "change node",
+        handler: |state, s| {
+            let mut split = s.split_whitespace();
+            split.next();
+            if let Some(name) = split.next() {
+                if name == ".." {
+                    let parent = vfs::Manager::get_node(state.db, state.current_node).get_parent();
+                    state.current_node = *parent;
+                } else if let Some(handle) =
+                    vfs::Manager::find_children(state.db, state.current_node, name)
+                {
+                    state.current_node = handle;
+                } else {
+                    kprint!("{} not found\r\n", name);
+                }
+            } else {
+                kprint!("missing arg\r\n");
+            }
+        }
+    },
+    Command{
+        name: "at",
+        desc: "get current node",
+        handler: |state, s| {
+            let name = vfs::Manager::get_node(state.db, state.current_node).get_name();
+            kprint!("{}\r\n", name);
+        }
+    },
+    Command{
+        name: "rule_remove",
+        desc: "<index>",
+        handler: |state, s| {
+            let mut split = s.split_whitespace();
+            split.next();
+            if let Some(index) = split.next() {
+                if let Ok(index) = index.parse::<u16>() {
+                    policy::PolicyEngine::remove_rule(state.db, policy::PolicyRuleHandle(index));
+                } else {
+                    kprint!("invalid number\r\n");
+                }
+            } else {
+                kprint!("missing arg\r\n");
+            }
+        }
+    },
+    Command{
+        name: "t_user",
+        desc: "test usermode",
+        handler: |state, s| {
+            task::Manager::switch_to_usermode(test_usermode_thunk as u64);
+        }
+    },
+    Command{
+        name: "write",
+        desc: "<data> to current node",
+        handler: |state, s| {
+            let mut split = s.split_whitespace();
+            split.next();
+            if let Some(name) = split.next() {
+                let handle = vfs::Manager::get_node(state.db, state.current_node).get_provider();
+                let res = vfs::Manager::invoke_provider_write(
+                    state.db,
+                    *handle,
+                    state.current_actor,
+                    name.as_bytes(),
+                );
+                kprint!("\r\n{:?}\r\n", res);
+            } else {
+                kprint!("missing arg\r\n");
+            }
+        }
+    },
+    Command{
+        name: "tree",
+        desc: "list node tree",
+        handler: |state, s| {
+            tree_traverse_node(state.db,state. current_node, 0);
+        }
+    },
+    Command{
+        name: "help",
+        desc: "get help",
+        handler: |state, s| {
+            for c in COMMANDS.iter() {
+                kprint!("* {}: {}\r\n", c.name, c.desc);
+            }
+        }
+    },
+];
+
 #[unsafe(no_mangle)]
 fn rust_start() {
     pmm::Manager::init();
@@ -102,20 +267,19 @@ fn rust_start() {
     );
     let res = policy::PolicyEngine::check_action(db, kernel_worker, start_task);
     assert_eq!(kernel_worker, db.find_from_str("worker_0").unwrap());
-
-    kprint!("check policy? {}\r\n", res);
+    kprint!("[policy] check policy? {res}\r\n");
     vfs::Manager::init(db);
 
-    let elf_bytes = include_bytes!("test.elf");
-    let user_aspace = vmm::Manager::new_address_space(db, pmm::Manager::alloc_page_zeroed());
-    let user_worker = task::Manager::new_worker(db, user_aspace);
-    let user_task = task::Manager::new_task(db, user_worker).unwrap();
-    task::Manager::load_elf_into_worker(db, user_worker, elf_bytes, true);
-    vmm::Manager::reload_cr3(db, user_aspace);
-    task::Manager::switch_to_usermode(0x200000);
+    // let elf_bytes = include_bytes!("test.elf");
+    // let user_aspace = vmm::Manager::new_address_space(db, pmm::Manager::alloc_page_zeroed());
+    // let user_worker = task::Manager::new_worker(db, user_aspace);
+    // let user_task = task::Manager::new_task(db, user_worker).unwrap();
+    // task::Manager::load_elf_into_worker(db, user_worker, elf_bytes, true);
+    // vmm::Manager::reload_cr3(db, user_aspace);
+    // task::Manager::switch_to_usermode(0x200000);
 
     // Enable interrupts :)
-    cpu::Manager::set_interrupts::<true>();
+    //cpu::Manager::set_interrupts::<true>();
 
     let logo = include_str!("logo.txt");
     let mut last_char = ' ';
@@ -133,15 +297,22 @@ fn rust_start() {
                     _ => "\x1b[0;0m",
                 }
             );
+            kprint!("{}", c);
+        } else if c == '\n' || c == '\r' {
+            kprint!("\r\n");
+        } else {
+            kprint!("{}", c);
         }
-        kprint!("{}", c);
     }
     kprint!("\x1b[0;0m\r\n");
 
     kprint!("kernel console, type <help>?\r\n");
-    let mut mean_counter = 0;
-    let mut current_node = vfs::NodeHandle::default();
-    let current_actor = db.find_from_str("worker_0").unwrap();
+    let mut state = ConsoleState{
+        current_actor: db.find_from_str("worker_0").unwrap(),
+        current_aspace: kernel_aspace,
+        current_node: vfs::NodeHandle::default(),
+        db,
+    };
     loop {
         let mut line = [0u8; 128];
         let mut index = 0;
@@ -152,129 +323,10 @@ fn rust_start() {
             if b == b'\r' || index >= line.len() {
                 let s = unsafe { str::from_raw_parts(line.as_ptr(), index) };
                 kprint!("\r\n");
-                if s.starts_with("help") {
-                    kprint!("* list - list all nodes\r\n");
-                    kprint!("* tree - list ALL, and i mean ALL nodes\r\n");
-                    kprint!("* mean - say something mean\r\n");
-                    kprint!("* at - print current node\r\n");
-                    kprint!("* cd <name> - change node\r\n");
-                    kprint!("* write <data> - write line at current node\r\n");
-                    kprint!("* rule_remove <index> - remove policy rule\r\n");
-                    kprint!("* rule_list - lists all policy rules\r\n");
-                    kprint!(
-                        "* map <vaddr> <paddr> <count> <flags> - map page into current ASPACE\r\n"
-                    );
-                    kprint!(
-                        "* map_r <vaddr> <paddr> <count> <flags> - map page into current ASPACE and reload tlb\r\n"
-                    );
-                    kprint!("* tlb_reload - reload cr3\r\n");
-                    kprint!("* user - test usermode\r\n");
-                } else if s.starts_with("user") {
-                    task::Manager::switch_to_usermode(test_usermode_thunk as u64);
-                } else if s.starts_with("map") {
-                    let mut split = s.split_whitespace();
-                    split.next();
-                    if let Some(Some(vaddr)) = split.next().map(parse_literal) {
-                        if let Some(Some(paddr)) = split.next().map(parse_literal) {
-                            if let Some(Some(count)) = split.next().map(parse_literal) {
-                                if let Some(Some(flags)) = split.next().map(parse_literal) {
-                                    vmm::Manager::map(
-                                        db,
-                                        kernel_aspace,
-                                        paddr as u64,
-                                        vaddr as u64,
-                                        count,
-                                        flags as u64,
-                                    );
-                                    if s.starts_with("map_r") {
-                                        vmm::Manager::reload_cr3(db, kernel_aspace);
-                                    }
-                                } else {
-                                    kprint!("invalid flags");
-                                }
-                            } else {
-                                kprint!("invalid count");
-                            }
-                        } else {
-                            kprint!("invalid paddr");
-                        }
-                    } else {
-                        kprint!("invalid vaddr");
+                for c in COMMANDS.iter() {
+                    if s.starts_with(c.name) {
+                        (c.handler)(&mut state, s);
                     }
-                } else if s.starts_with("tlb_reload") {
-                    vmm::Manager::reload_cr3(db, kernel_aspace);
-                } else if s.starts_with("rule_list") {
-                    policy::PolicyEngine::for_each_policy_rule(db, |rule| {
-                        kprint!("- {:?}\r\n", rule);
-                    });
-                } else if s.starts_with("rule_remove") {
-                    let mut split = s.split_whitespace();
-                    split.next();
-                    if let Some(index) = split.next() {
-                        if let Ok(index) = index.parse::<u16>() {
-                            policy::PolicyEngine::remove_rule(db, policy::PolicyRuleHandle(index));
-                        } else {
-                            kprint!("invalid number\r\n");
-                        }
-                    } else {
-                        kprint!("missing arg\r\n");
-                    }
-                } else if s.starts_with("write") {
-                    let mut split = s.split_whitespace();
-                    split.next();
-                    if let Some(name) = split.next() {
-                        let handle = vfs::Manager::get_node(db, current_node).get_provider();
-                        let res = vfs::Manager::invoke_provider_write(
-                            db,
-                            *handle,
-                            current_actor,
-                            name.as_bytes(),
-                        );
-                        kprint!("\r\n{:?}\r\n", res);
-                    } else {
-                        kprint!("missing arg\r\n");
-                    }
-                } else if s.starts_with("tree") {
-                    tree_traverse_node(db, current_node, 0);
-                } else if s.starts_with("list") {
-                    vfs::Manager::for_each_children(db, current_node, |handle| {
-                        let node = vfs::Manager::get_node(db, handle);
-                        let name = node.get_name();
-                        kprint!("- {}\r\n", name);
-                    });
-                } else if s.starts_with("at") {
-                    let name = vfs::Manager::get_node(db, current_node).get_name();
-                    kprint!("{}\r\n", name);
-                } else if s.starts_with("cd") {
-                    let mut split = s.split_whitespace();
-                    split.next();
-                    if let Some(name) = split.next() {
-                        if name == ".." {
-                            let parent = vfs::Manager::get_node(db, current_node).get_parent();
-                            current_node = *parent;
-                        } else if let Some(handle) =
-                            vfs::Manager::find_children(db, current_node, name)
-                        {
-                            current_node = handle;
-                        } else {
-                            kprint!("{} not found\r\n", name);
-                        }
-                    } else {
-                        kprint!("missing arg\r\n");
-                    }
-                } else if s.starts_with("mean") {
-                    kprint!(
-                        "{}\r\n",
-                        [
-                            "go away\r\n",
-                            "иди нахуй\r\n",
-                            "vmovntdqa without the ntdqa\r\n",
-                            "something mean\r\n"
-                        ][mean_counter % 4]
-                    );
-                    mean_counter += 1;
-                } else {
-                    kprint!("{}???\r\n", s);
                 }
                 break;
             } else if b == 0x08 || b == 0x7F {

@@ -112,6 +112,9 @@ impl Manager {
     pub fn load_elf_into_worker(db: &mut db::Database, id: db::ObjectHandle, bytes: &[u8], main: bool) {
         use xmas_elf::{program, ElfFile};
         let elf = ElfFile::new(&bytes).expect("Failed to parse ELF file");
+        let aspace = Self::get_worker_aspace(db, id);
+        kprint!("[task] using aspace = {:?}\r\n", aspace);
+
         for ph in elf.program_iter() {
             if ph.get_type().unwrap() == program::Type::Dynamic {
                 kprint!("[task] Skipping dynamic segment\r\n");
@@ -128,8 +131,6 @@ impl Manager {
             let total_size = page_offset + mem_size;
             let num_pages = total_size.div_ceil(0x1000);
             kprint!("[task] Using {num_pages} pages, addr = {virt_addr:0x}, align {aligned_virt_addr:0x} with type {:0x}\r\n", ph.physical_addr());
-
-            let aspace = Self::get_worker_aspace(db, id);
             for i in 0..num_pages {
                 let handle = pmm::Manager::alloc_page();
                 let ptr = handle.get_mut();
@@ -151,7 +152,7 @@ impl Manager {
                     }
                 }
                 kprint!("[task] {:016x} => {virt_addr:016x}; file_size={file_size}, file_offset={file_offset}, mem_size={mem_size}\r\n", ptr as u64);
-                vmm::Manager::map(db, aspace, ptr as u64, (virt_addr + i * 4096) as u64, 1, vmm::Page::PRESENT | vmm::Page::READ_WRITE);
+                vmm::Manager::map_single(db, aspace, ptr as u64, (virt_addr + i * 4096) as u64, vmm::Page::PRESENT | vmm::Page::READ_WRITE);
             }
         }
         //let entry_function: EntryFn = unsafe { core::mem::transmute(entry_point) };
