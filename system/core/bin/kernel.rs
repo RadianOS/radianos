@@ -474,7 +474,7 @@ fn rust_start() {
         let mut index = 0;
 
         let user_name = policy::Manager::get_user(state.db, state.current_user).get_name();
-        let hostname = "hostname";
+        let hostname = "radiant-pc";
         kprint!("\x1b[1;31mRadianOS:\x1b[1;33m{user_name}@{hostname}\x1b[0;0m>");
         loop {
             let b = DebugSerial::get_byte();
