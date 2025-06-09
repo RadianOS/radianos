@@ -134,9 +134,9 @@ impl Manager {
             for i in 0..num_pages {
                 let handle = pmm::Manager::alloc_page();
                 let ptr = handle.get_mut();
-                let file_offset = (ph.offset() as usize - i * 4096).min(4096);
-                let file_size = (ph.file_size() as usize - i * 4096).min(4096);
-                let mem_size = (ph.mem_size() as usize - i * 4096).min(4096);
+                let file_offset = (ph.offset() as usize - i * pmm::PAGE_SIZE).min(pmm::PAGE_SIZE);
+                let file_size = (ph.file_size() as usize - i * pmm::PAGE_SIZE).min(pmm::PAGE_SIZE);
+                let mem_size = (ph.mem_size() as usize - i * pmm::PAGE_SIZE).min(pmm::PAGE_SIZE);
                 unsafe {
                     core::ptr::copy_nonoverlapping(
                         bytes[file_offset..].as_ptr(),
@@ -152,7 +152,7 @@ impl Manager {
                     }
                 }
                 kprint!("[task] {:016x} => {virt_addr:016x}; file_size={file_size}, file_offset={file_offset}, mem_size={mem_size}\r\n", ptr as u64);
-                vmm::Manager::map_single(db, aspace, ptr as u64, (virt_addr + i * 4096) as u64, vmm::Page::PRESENT | vmm::Page::READ_WRITE);
+                vmm::Manager::map_single(db, aspace, ptr as u64, (virt_addr + i * pmm::PAGE_SIZE) as u64, vmm::Page::PRESENT | vmm::Page::READ_WRITE);
             }
         }
         //let entry_function: EntryFn = unsafe { core::mem::transmute(entry_point) };

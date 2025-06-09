@@ -98,8 +98,8 @@ impl Manager {
     ) {
         for _ in 0..count {
             Self::map_single(db, aspace, paddr, vaddr, flags);
-            paddr += 4096;
-            vaddr += 4096;
+            paddr += pmm::PAGE_SIZE;
+            vaddr += pmm::PAGE_SIZE;
         }
     }
 

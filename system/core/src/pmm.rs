@@ -7,7 +7,7 @@ unsafe extern "C" {
 
 const BITMAP_BYTES: usize = core::mem::size_of::<u64>();
 const BITMAP_BITS: usize = BITMAP_BYTES * 8;
-const PAGE_SIZE: usize = 4096;
+pub const PAGE_SIZE: usize = 4096;
 
 #[derive(Debug)]
 pub struct Manager;
@@ -58,7 +58,7 @@ impl Manager {
     pub fn alloc_page_zeroed() -> Handle {
         let handle = Self::alloc_page();
         unsafe {
-            handle.get_mut().write_bytes(0, 4096);
+            handle.get_mut().write_bytes(0, PAGE_SIZE);
         }
         handle
     }
