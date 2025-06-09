@@ -92,7 +92,7 @@ struct Command {
     desc: &'static str,
     handler: fn(&mut ConsoleState, &str),
 }
-const COMMANDS: [Command; 22] = [
+const COMMANDS: [Command; 23] = [
     Command{
         name: "help",
         desc: "get help",
@@ -317,6 +317,13 @@ const COMMANDS: [Command; 22] = [
             task::Manager::load_elf_into_worker(state.db, state.current_actor, elf_bytes, true);
             vmm::Manager::reload_cr3(state.db, state.current_aspace);
             task::Manager::switch_to_usermode(0x200000);
+        }
+    },
+    Command{
+        name: "int",
+        desc: "do an interrupts",
+        handler: |state, s| {
+            unsafe{core::arch::asm!("int $0x20");}
         }
     },
     Command{

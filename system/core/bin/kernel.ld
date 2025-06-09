@@ -10,7 +10,9 @@ PHDRS {
 }
 SECTIONS {
     .text : ALIGN(4K) {
-        *(.text.init .text* .text.*)
+        *(.text.init)
+        *(.text.int_vector)
+        *(.text* .text.*)
     } >ram AT>ram :text
     .data : ALIGN(4K) {
         *(.data* .data.*)
