@@ -1,8 +1,8 @@
 // Kernel loading logic
-use xmas_elf::{program, ElfFile};
-use uefi::boot::{self, AllocateType, MemoryType};
+use crate::boot_print;
 use crate::fs::read_file;
-use crate::{boot_print, MemoryEntry};
+use uefi::boot::{self, AllocateType, MemoryType};
+use xmas_elf::{ElfFile, program};
 
 pub const KERNEL_BASE: u64 = 0;
 
@@ -35,7 +35,11 @@ pub fn load_kernel(file_path: &str) -> (usize, KernelFn) {
         } else {
             MemoryType::LOADER_DATA
         };
-        boot_print!("Using {num_pages} pages, addr = {KERNEL_BASE:0x} + {virt_addr:0x}, align {aligned_virt_addr:0x} with type {:?}, {:0x}\r\n", mem_type, ph.physical_addr());
+        boot_print!(
+            "Using {num_pages} pages, addr = {KERNEL_BASE:0x} + {virt_addr:0x}, align {aligned_virt_addr:0x} with type {:?}, {:0x}\r\n",
+            mem_type,
+            ph.physical_addr()
+        );
         let dest_ptr = boot::allocate_pages(
             AllocateType::Address(KERNEL_BASE + u64::try_from(aligned_virt_addr).unwrap()),
             mem_type,
@@ -50,7 +54,11 @@ pub fn load_kernel(file_path: &str) -> (usize, KernelFn) {
                 file_size,
             );
             if mem_size > file_size {
-                core::ptr::write_bytes(dest_ptr.add(page_offset + file_size), 0, mem_size - file_size);
+                core::ptr::write_bytes(
+                    dest_ptr.add(page_offset + file_size),
+                    0,
+                    mem_size - file_size,
+                );
             }
         }
     }

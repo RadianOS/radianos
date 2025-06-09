@@ -13,7 +13,10 @@ impl<T: Default, const N: usize> Default for StaticVec<T, N> {
     }
 }
 impl<T, const N: usize> StaticVec<T, N> {
-    pub fn new() -> Self where T: Default {
+    pub fn new() -> Self
+    where
+        T: Default,
+    {
         Self::default()
     }
 
@@ -22,7 +25,10 @@ impl<T, const N: usize> StaticVec<T, N> {
         self.size += 1;
     }
 
-    pub fn pop(&mut self) -> Option<T> where T: Default {
+    pub fn pop(&mut self) -> Option<T>
+    where
+        T: Default,
+    {
         if self.size == 0 {
             None
         } else {

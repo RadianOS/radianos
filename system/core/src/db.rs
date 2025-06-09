@@ -1,4 +1,4 @@
-use crate::{containers::StaticVec, pmm, policy, smp, vfs};
+use crate::{containers::StaticVec, pmm, policy, vfs};
 
 /// "Fat pointer" - only use if you absolutely dont know the source of id
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -13,7 +13,9 @@ impl ObjectHandle {
 }
 
 pub struct Worker {
+    #[allow(dead_code)]
     gpr: [u64; 16],
+    #[allow(dead_code)]
     stack_page: pmm::Handle,
 }
 impl Worker {
@@ -38,12 +40,11 @@ pub struct Database {
     pub vfs_providers: StaticVec<vfs::Provider, 32>,
     pub aspace_pgtable: StaticVec<pmm::Handle, 64>,
 }
-static mut GLOBAL_DATABASE: [u8; core::mem::size_of::<Database>()] = [0u8; core::mem::size_of::<Database>()];
+static mut GLOBAL_DATABASE: [u8; core::mem::size_of::<Database>()] =
+    [0u8; core::mem::size_of::<Database>()];
 
 impl Database {
-    pub fn init() {
-        
-    }
+    pub fn init() {}
 
     /// Assumed lock
     pub fn get() -> &'static Self {
@@ -56,15 +57,21 @@ impl Database {
     pub fn get_mut() -> &'static mut Self {
         unsafe {
             #[allow(static_mut_refs)]
-            (GLOBAL_DATABASE.as_mut_ptr() as *mut Self).as_mut().unwrap()
+            (GLOBAL_DATABASE.as_mut_ptr() as *mut Self)
+                .as_mut()
+                .unwrap()
         }
     }
 
     pub fn find_from_str(&self, s: &str) -> Option<ObjectHandle> {
         if s.starts_with("worker_") {
-            let offset = s.strip_prefix("worker_").unwrap().parse::<usize>().unwrap_or_default();
+            let offset = s
+                .strip_prefix("worker_")
+                .unwrap()
+                .parse::<usize>()
+                .unwrap_or_default();
             if offset < self.workers.len() {
-                Some(ObjectHandle{
+                Some(ObjectHandle {
                     id: offset as u16,
                     type_: ObjectHandle::WORKER,
                 })
@@ -83,10 +90,11 @@ pub struct PathBuf<'a> {
 }
 impl<'a> PathBuf<'a> {
     pub const fn from_str(inner: &'a str) -> Self {
-        Self{ inner }
+        Self { inner }
     }
     pub fn path(&'a self) -> Path<'a> {
-        Path{ inner: &self }
+        // Don't borrow, "this expression creates a reference which is immediately dereferenced by the compiler"
+        Path { inner: self }
     }
 }
 
@@ -95,15 +103,29 @@ pub struct Path<'a> {
 }
 impl<'a> Path<'a> {
     pub fn new() -> Self {
-        Self{ inner: &DEFAULT_PATHBUF, }
+        Self {
+            inner: &DEFAULT_PATHBUF,
+        }
     }
     pub fn components(&self) -> core::str::Split<'a, &'a str> {
         self.inner.inner.split("/")
     }
     pub fn file_name(&'a self) -> Option<&'a str> {
-        self.components().last().map(|p| p.split(".").next()).unwrap_or(None)
+        self.components()
+            .last()
+            .map(|p| p.split(".").next())
+            .unwrap_or(None)
     }
     pub fn extension(&'a self) -> Option<&'a str> {
-        self.components().last().map(|p| p.split(".").last()).unwrap_or(None)
+        self.components()
+            .last()
+            .map(|p| p.split(".").last())
+            .unwrap_or(None)
+    }
+}
+
+impl<'a> Default for Path<'a> {
+    fn default() -> Self {
+        Self::new()
     }
 }

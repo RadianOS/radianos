@@ -1,4 +1,4 @@
-use crate::{db, kprint, pmm, smp};
+use crate::{db, kprint, pmm};
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Page(u64);
@@ -24,6 +24,7 @@ impl Manager {
         //db.aspace_pgtable[i] = pmm::Manager::alloc_page();
     }
 
+    #[allow(dead_code)]
     fn get_current_cr3() -> u64 {
         let r;
         unsafe {
@@ -40,20 +41,27 @@ impl Manager {
         AddressSpaceHandle((db.aspace_pgtable.len() - 1) as u16)
     }
 
-    pub fn map(db: &mut db::Database, aspace: AddressSpaceHandle, mut paddr: u64, mut vaddr: u64, count: usize, flags: u64) {
+    pub fn map(
+        db: &mut db::Database,
+        aspace: AddressSpaceHandle,
+        mut paddr: u64,
+        mut vaddr: u64,
+        count: usize,
+        flags: u64,
+    ) {
         for _ in 0..count {
             let index = [
                 ((vaddr >> 39) & Page::FLAG_MASK) as usize,
                 ((vaddr >> 30) & Page::FLAG_MASK) as usize,
                 ((vaddr >> 21) & Page::FLAG_MASK) as usize,
-                ((vaddr >> 12) & Page::FLAG_MASK) as usize
+                ((vaddr >> 12) & Page::FLAG_MASK) as usize,
             ];
             //kprint!("\r\nv={vaddr:016x}::p={paddr:016x}");
             let mut table = db.aspace_pgtable[aspace.0 as usize].get_mut() as *mut Page;
             for i in 0..index.len() {
                 //kprint!("walk #{:04x} ", index[i]);
                 unsafe {
-                    let entry = table.add(index[i] as usize);
+                    let entry = table.add(index[i]);
                     if i == index.len() - 1 {
                         *entry = Page((paddr & !Page::FLAG_MASK) | flags);
                     } else {
@@ -78,10 +86,12 @@ impl Manager {
     pub fn evil_function_do_not_call(db: &db::Database, aspace: AddressSpaceHandle) {
         let table = db.aspace_pgtable[aspace.0 as usize].get_mut() as u64;
         kprint!("loading table at {table}\r\n");
-        unsafe{core::arch::asm!(
-            "mov cr3, {}",
-            in(reg) table,
-            options(nostack)
-        )}
+        unsafe {
+            core::arch::asm!(
+                "mov cr3, {}",
+                in(reg) table,
+                options(nostack)
+            )
+        }
     }
 }
