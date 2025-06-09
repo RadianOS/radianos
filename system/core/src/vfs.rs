@@ -69,7 +69,7 @@ impl Manager {
             Provider {
                 write: |db, actor, data| {
                     let caps = policy::Capability::default().with(policy::Capability::WRITE_LOG);
-                    if policy::PolicyEngine::check_capability(db, actor, caps) {
+                    if policy::Manager::check_capability(db, actor, caps) {
                         let s = unsafe { str::from_raw_parts(data.as_ptr(), data.len()) };
                         kprint!("{}", s);
                         Ok(data.len())
@@ -104,8 +104,9 @@ impl Manager {
         Self::new_node(db, "temp", root_handle);
 
         let user_dir = Self::new_node(db, "user", root_handle);
-        Self::new_node(db, "home", user_dir);
-        Self::new_node(db, "binary", user_dir);
+        let default_user_dir = Self::new_node(db, "admin", user_dir);
+        Self::new_node(db, "home", default_user_dir);
+        Self::new_node(db, "binary", default_user_dir);
 
         Self::new_node(db, "misc", root_handle);
         Self::new_node(db, "opt", root_handle);

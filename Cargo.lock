@@ -82,13 +82,13 @@ dependencies = [
 [[package]]
 name = "radian_core"
 version = "0.1.0"
+dependencies = [
+ "xmas-elf",
+]
 
 [[package]]
 name = "radian_drivers"
 version = "0.1.0"
-dependencies = [
- "radian_core",
-]
 
 [[package]]
 name = "syn"

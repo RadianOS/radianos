@@ -8,6 +8,7 @@ const USER_CODE_SEGMENT: usize = 0x18;
 #[allow(dead_code)]
 const USER_DATA_SEGMENT: usize = 0x20;
 
+#[derive(Debug)]
 #[repr(C, packed)]
 pub struct InterruptStackFrame {
     ip: usize,
@@ -142,7 +143,8 @@ impl GlobalDescriptor {
             base_3: ((base >> 24) & 0xff) as u8,
         }
     }
-    pub const fn new_tss(base: u64, limit: u32, access: u8, flags: u8) -> (Self, Self) {
+    pub const fn new_tss(base: u64, access: u8, flags: u8) -> (Self, Self) {
+        let limit = (core::mem::size_of::<TaskStateSegment>() - 1) as u32;
         let lower = Self::new(base, limit, access, flags);
         let mut upper = GlobalDescriptor::new_zero();
         unsafe {
@@ -218,8 +220,12 @@ impl Manager {
     }
 
     unsafe extern "x86-interrupt" fn dummy_int_handler(stack_frame: InterruptStackFrame) {
-        let _ = stack_frame; // Prevent unused variable warning
-        kprint!("wora wora!\r\n");
+        unsafe {
+            kprint!("[cpu] CS={:0x}, FLAGS={:0x}, IP={:0x}, SP={:0x}, SS={:0x}\r\n", (&raw const stack_frame.cs).read_unaligned(), (&raw const stack_frame.flags).read_unaligned(), (&raw const stack_frame.ip).read_unaligned(),
+            (&raw const stack_frame.sp).read_unaligned(), (&raw const stack_frame.ss).read_unaligned()
+        );
+        }
+        crate::abort();
     }
 
     /// Call `reload_idt` to see reflected changes
@@ -231,22 +237,34 @@ impl Manager {
 
     pub fn init() {
         const_assert!(core::mem::size_of::<GlobalDescriptor>() == 64 / 8);
-        kprint!("[gdt] loading new gdt\r\n");
+        kprint!("[cpu] loading new gdt\r\n");
         unsafe {
             let (low, high) =
-                GlobalDescriptor::new_tss((&raw const GLOBAL_TSS) as u64, 0xfffff, 0x89, 0x0);
+                GlobalDescriptor::new_tss((&raw const GLOBAL_TSS) as u64, 0x89, 0x0);
             GLOBAL_GDT[5] = low;
             GLOBAL_GDT[6] = high;
             Self::load_gdt(&raw mut GLOBAL_GDT);
         }
-        kprint!("[gdt] loading new idt\r\n");
+        kprint!("[cpu] loading new idt\r\n");
         for i in 0..256 {
             Self::register_interrupt(Self::dummy_int_handler, i);
         }
         Self::load_idt(&raw mut GLOBAL_IDT);
+        kprint!("[cpu] set tss\r\n");
+        unsafe {
+            GLOBAL_TSS.rsp0 = (&STACK_TOP) as *const _ as u64;
+            GLOBAL_TSS.iopb = 104;
+            core::arch::asm!(
+                "ltr ax",
+                in("ax") (5 * 8) | 0,
+            );
+        }
     }
 }
 
+unsafe extern "C" {
+    unsafe static STACK_TOP: u8;
+}
 // Globals
 static mut GLOBAL_TSS: TaskStateSegment = TaskStateSegment::new_zero();
 static mut GLOBAL_GDT: [GlobalDescriptor; 7] = [

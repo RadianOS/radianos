@@ -3,7 +3,12 @@ name = "radian_core"
 version = "0.1.0"
 edition = "2024"
 
+[[bin]]
+name = "kernel"
+path = "bin/kernel.rs"
+
 [lib]
 crate-type = ["staticlib", "rlib"]
 
 [dependencies]
+xmas-elf = "0.10.0"

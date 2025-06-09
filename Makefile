@@ -38,7 +38,8 @@ build-bootloader:
 	cargo build $(if $(RELEASE),--release,) --target x86_64-unknown-uefi --bin boot
 
 build-kernel:
-	RUSTFLAGS='-C link-arg=-Tsystem/drivers/src/kernel.ld -C relocation-model=static' cargo build $(if $(RELEASE),--release,) --target x86_64-unknown-none --bin kernel
+	clang -ffreestanding -nostdlib -O2 -Wall -T ./system/drivers/src/driver.ld ./system/core/bin/test.c -o ./system/core/bin/test.elf
+	RUSTFLAGS='-C link-arg=-Tsystem/core/bin/kernel.ld -C relocation-model=static' cargo build $(if $(RELEASE),--release,) --target x86_64-unknown-none --bin kernel
 
 build-drivers:
 	clear && objdump -t target/x86_64-unknown-none/debug/deps/libradian_core-eee6dde371a58c3d.a | awk '/a/ {print "PROVIDE( \"" $4 "\" = " $1 ");"}' | awk '!seen[$2]++' | sort
@@ -70,7 +71,7 @@ qemu: iso
 		-drive if=pflash,format=raw,readonly=on,file=$(OVMF_CODE) \
 		-drive format=raw,file=$(ISO_FILE) \
 		-smp 4 -m 4G -cpu max -s -d unimp,guest_errors,invalid_mem,int \
-		--serial mon:stdio \
+		-monitor stdio \
 		-device qemu-xhci -device usb-kbd -audiodev pa,id=snd0 -machine pcspk-audiodev=snd0 -M q35 --no-reboot
 
 qemu-nographic: iso # yo stop allocating so much my pc only has 8G atleast allocate 2G
