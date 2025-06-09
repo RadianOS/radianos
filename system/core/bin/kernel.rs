@@ -4,6 +4,12 @@
 
 use core::str;
 use radian_core::{containers::{StaticString, StaticVec}, cpu, prelude::*, smp, task, vmm};
+use crate::{
+    pmm::Manager as PmmManager,
+    cpu::Manager as CpuManager,
+    smp::Manager as SmpManager,
+    policy::Manager as PolicyManager,
+};
 
 /// Do not remove these or bootloader fails due to 0-sized section, thanks
 #[allow(dead_code)]
@@ -92,7 +98,9 @@ struct Command {
     desc: &'static str,
     handler: fn(&mut ConsoleState, &str),
 }
-const COMMANDS: [Command; 23] = [
+
+
+const COMMANDS: [Command; 24] = [
     Command{
         name: "help",
         desc: "get help",
@@ -100,6 +108,16 @@ const COMMANDS: [Command; 23] = [
             for c in COMMANDS.iter() {
                 kprint!("* {}: {}\r\n", c.name, c.desc);
             }
+        }
+    },
+    Command {
+        name: "clear",
+        desc: "clear the screen",
+        handler: |_state, _s| {
+            // Clear screen ANSI escape sequence
+            kprint!("\x1b[2J");
+            // Move cursor to home position (0,0)
+            kprint!("\x1b[H");
         }
     },
     Command{
@@ -367,6 +385,8 @@ const COMMANDS: [Command; 23] = [
             }
         }
     },
+
+
 ];
 
 pub fn levenshtein_distance(s1: &str, s2: &str) -> usize {
