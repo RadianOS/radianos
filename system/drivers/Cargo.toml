@@ -4,10 +4,6 @@ version = "0.1.0"
 edition = "2024"
 
 [[bin]]
-name = "kernel"
-path = "src/kernel.rs"
-
-[[bin]]
 name = "ata"
 path = "src/ata.rs"
 
