@@ -75,29 +75,6 @@ unsafe extern "C" fn test_usermode_thunk() {
 }
 
 #[unsafe(no_mangle)]
-fn test_usermode() {
-    unsafe {
-        core::arch::asm!(
-            "mov rcx, 0xc0000082",
-            "wrmsr",
-            "mov rcx, 0xc0000080",
-            "rdmsr",
-            "or eax, 1",
-            "wrmsr",
-            "mov rcx, 0xc0000081",
-            "rdmsr",
-            "mov edx, 0x00180008",
-            "wrmsr",
-            "lea rcx, test_usermode_thunk",
-            "mov r11, 0x202",
-            "sysretq",
-            options(nostack),
-            options(noreturn)
-        );
-    }
-}
-
-#[unsafe(no_mangle)]
 fn rust_start() {
     pmm::Manager::init();
 
@@ -132,7 +109,6 @@ fn rust_start() {
     vfs::Manager::init(db);
 
     let elf_bytes = include_bytes!("test.elf");
-
     let user_aspace = vmm::Manager::new_address_space(db, pmm::Manager::alloc_page_zeroed());
     let user_worker = task::Manager::new_worker(db, user_aspace);
     let user_task = task::Manager::new_task(db, user_worker).unwrap();
@@ -190,7 +166,7 @@ fn rust_start() {
                     kprint!("* tlb_reload - reload cr3\r\n");
                     kprint!("* user - test usermode\r\n");
                 } else if s.starts_with("user") {
-                    test_usermode();
+                    task::Manager::switch_to_usermode(test_usermode_thunk as u64);
                 } else if s.starts_with("map") {
                     let mut split = s.split_whitespace();
                     split.next();

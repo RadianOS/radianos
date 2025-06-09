@@ -50,8 +50,26 @@ pub const PROGRAM_IMAGE_BASE: u64 = 0x1000_0000;
 
 pub struct Manager;
 impl Manager {
-    pub fn init(db: &mut db::Database) {
+    /// Probably already enabled but just to be sure
+    fn enable_sysret() {
+        unsafe {
+            core::arch::asm!(
+                "mov rcx, 0xc0000082",
+                "wrmsr",
+                "mov rcx, 0xc0000080",
+                "rdmsr",
+                "or eax, 1",
+                "wrmsr",
+                "mov rcx, 0xc0000081",
+                "rdmsr",
+                "mov edx, 0x00180008",
+                "wrmsr",
+            )
+        }
+    }
 
+    pub fn init(db: &mut db::Database) {
+        Self::enable_sysret();
     }
 
     pub fn new_worker(db: &mut db::Database, aspace: vmm::AddressSpaceHandle) -> db::ObjectHandle {
@@ -75,6 +93,19 @@ impl Manager {
             Some(task_id)
         } else {
             None
+        }
+    }
+
+    #[unsafe(no_mangle)]
+    pub fn switch_to_usermode(next_rip: u64) {
+        unsafe {
+            core::arch::asm!(
+                "mov r11, 0x202",
+                "sysretq",
+                in("rcx") next_rip,
+                options(nostack),
+                options(noreturn),
+            );
         }
     }
 
