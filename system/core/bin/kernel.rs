@@ -2,6 +2,7 @@
 #![no_main]
 #![feature(str_from_raw_parts)]
 
+extern crate alloc;
 use core::str;
 use radian_core::{containers::{StaticString, StaticVec}, cpu, prelude::*, smp, task, vmm, weak_typed_enum, TbsAlloc};
 
@@ -445,8 +446,11 @@ extern "sysv64" fn rust_start(entries: *mut pmm::MemoryEntry, num_entries: usize
     assert_eq!(kernel_worker, db.find_from_str("worker_0").unwrap());
     kprint!("[policy] check policy? {res}\r\n");
 
-    TbsAlloc::TbsAllocator::init();
+    TbsAlloc::TbsAllocator::init(db, kernel_aspace);
     TbsAlloc::test_self();
+
+    let ref_box = alloc::boxed::Box::new(065);
+    kprint!("{ref_box:?}\r\n");
 
     // Enable interrupts :)
     //cpu::Manager::set_interrupts::<true>();

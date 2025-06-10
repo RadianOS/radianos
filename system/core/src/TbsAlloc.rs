@@ -10,25 +10,26 @@ use core::alloc::{AllocError, Allocator, GlobalAlloc, Layout};
 use core::ptr::NonNull;
 
 use crate::containers::{FlexibleArray, StaticVec};
-use crate::{kprint, pmm, vmm};
+use crate::{db, kprint, pmm, vmm};
 
 pub const CACHE_LINE_SIZE: usize = 64;
 
 /// Max number of arenas total, set it to thread count
 pub const MAX_ARENAS: usize = 8;
 pub const ARENA_DEFAULT_SIZE: usize = 2097152; // Size of a given arena
+pub const ARENA_MAX_SIZE: usize = 1 << 48; // Max size supported by allocator
 pub const ARENA_DEFAULT_BASE: usize = 0x1000_0000; //Base of allocations
 pub const ARENA_DEFAULT_SPACING: usize = 0x1000_0000; //1 GiB from each other
 
 #[derive(Default, Debug, Clone, Copy)]
-struct HeapNode {
+struct IntrusiveIntervalNode {
     base: usize,
     length: usize,
     left: usize,
     right: usize,
     height: i8,
 }
-impl HeapNode {
+impl IntrusiveIntervalNode {
     #[inline]
     fn is_present(&self) -> bool {
         self.base != 0
@@ -42,33 +43,29 @@ impl HeapNode {
     }
 }
 
-pub struct HeapNodeAccessor<'a> {
-    tree: &'a mut HeapTree,
-}
-
 #[derive(Default, Debug, Clone, Copy)]
-struct HeapTree {
+struct IntrusiveIntervalTree {
     extent: usize,
     root: usize,
-    nodes: FlexibleArray<HeapNode>,
+    nodes: FlexibleArray<IntrusiveIntervalNode>,
 }
-impl HeapTree {
-    const NODES_OFFSET: usize = core::mem::size_of::<HeapTree>();
+impl IntrusiveIntervalTree {
+    const NODES_OFFSET: usize = core::mem::size_of::<IntrusiveIntervalTree>();
     fn init(&mut self, root_base: usize, root_length: usize) {
         self.root = 0;
         self.extent = 0;
         // Create the null node
-        self.nodes[0] = HeapNode::default();
+        self.nodes[0] = IntrusiveIntervalNode::default();
         self.extent += 1;
         let root = self.alloc_node();
         self.nodes[root].base = root_base;
         self.nodes[root].length = root_length;
         self.root = root;
     }
-    #[inline] fn get_node<'a>(&'a self, index: usize) -> &'a HeapNode {
+    #[inline] fn get_node<'a>(&'a self, index: usize) -> &'a IntrusiveIntervalNode {
         &self.nodes[index]
     }
-    #[inline] fn get_node_mut<'a>(&'a mut self, index: usize) -> &'a mut HeapNode {
+    #[inline] fn get_node_mut<'a>(&'a mut self, index: usize) -> &'a mut IntrusiveIntervalNode {
         &mut self.nodes[index]
     }
     fn alloc_node(&mut self) -> usize {
@@ -144,8 +141,8 @@ impl HeapTree {
 pub fn test_self() {
     unsafe {
         let mut buffer = [0u8; 1024];
-        let tree = buffer.as_mut_ptr().byte_add(4 - (buffer.as_ptr() as usize) % 4) as *mut HeapTree;
-        HeapTree::init(tree.as_mut().unwrap(), 64, 64);
+        let tree = buffer.as_mut_ptr().byte_add(4 - (buffer.as_ptr() as usize) % 4) as *mut IntrusiveIntervalTree;
+        IntrusiveIntervalTree::init(tree.as_mut().unwrap(), 64, 64);
         kprint!("[tbs] root={}\r\n", (*tree).root);
         for i in 0..4 {
             let new_root = tree.as_mut().unwrap().insert((*tree).root, 65535 - 1024 * i, 512 * i);
@@ -202,30 +199,47 @@ impl TbsAllocator {
             ],
         }
     }
-    pub fn init() {
+    pub fn init(db: &mut db::Database, aspace: vmm::AddressSpaceHandle) {
         unsafe {
             // Initialize first arena
             (*&raw mut TBS_ALLOCATOR).arenas[0] = Arena::new(ARENA_DEFAULT_BASE, ARENA_DEFAULT_SIZE);
-            let tree = (*&raw mut TBS_ALLOCATOR).arenas[0].get_base_mut() as *mut HeapTree;
+            // Create first page for tree span
+            let handle = pmm::Manager::alloc_page();
+            vmm::Manager::map(db, aspace, handle.get() as u64, ARENA_DEFAULT_BASE as u64, 1, vmm::Page::PRESENT | vmm::Page::READ_WRITE);
+            let tree = (*&raw mut TBS_ALLOCATOR).arenas[0].get_base_mut() as *mut IntrusiveIntervalTree;
             (*tree).init(ARENA_DEFAULT_BASE, ARENA_DEFAULT_SIZE);
         }
     }
 }
 unsafe impl GlobalAlloc for TbsAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        assert!(layout.align() <= CACHE_LINE_SIZE);
+        let aligned_size = layout.size().div_ceil(CACHE_LINE_SIZE) * CACHE_LINE_SIZE;
         unsafe {
             let arenas = &raw mut TBS_ALLOCATOR.arenas;
             for i in 0..MAX_ARENAS {
                 if (*arenas)[i].is_present() {
-                    let tree = (*arenas)[i].get_base_mut() as *mut HeapTree;
-                    
+                    let tree = ((*arenas)[i].get_base_mut() as *mut IntrusiveIntervalTree)
+                        .as_mut().unwrap();
+                    let new_ptr = tree.nodes[tree.root].base + tree.nodes[tree.root].length - aligned_size;
+                    tree.nodes[tree.root].length -= aligned_size;
+                    tree.root = tree.insert(tree.root, new_ptr, aligned_size);
+
+                    // Map if not already
+                    let aspace = vmm::AddressSpaceHandle::get_kernel();
+                    let db = db::Database::get_mut();
+                    if !vmm::Manager::has_mapping_present(db, aspace, (new_ptr & !0xfff) as u64) {
+                        let handle = pmm::Manager::alloc_page();
+                        vmm::Manager::map(db, aspace, handle.get() as u64, (new_ptr & !0xfff) as u64, 1, vmm::Page::PRESENT | vmm::Page::READ_WRITE);
+                    }
+                    return new_ptr as *mut u8;
                 }
             }
         }   
-        core::ptr::null_mut()
+        unreachable!()
     }
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        
+        // uh lmao
     }
 }
 #[global_allocator]

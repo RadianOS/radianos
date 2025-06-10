@@ -8,5 +8,5 @@ br task.rs:radian_core::task::Manager::switch_to_usermode
 #     set $i = $i + 16
 # end
 #br kernel.rs:323
-br test_self
+br TbsAlloc.rs:232
 target remote localhost:1234

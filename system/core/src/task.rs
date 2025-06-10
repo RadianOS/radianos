@@ -57,7 +57,7 @@ impl Worker {
 }
 
 /// Default stack base
-pub const TASK_STACK_BASE: u64 = 0xC000_0000;
+pub const TASK_STACK_BASE: u64 = 0x1100_0000;
 pub type EntryFn = unsafe extern "C" fn() -> ();
 /// Only used for shit like .bin or a.out
 pub const PROGRAM_IMAGE_BASE: u64 = 0x1000_0000;

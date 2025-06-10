@@ -13,10 +13,28 @@ impl Page {
     pub fn is_present(self) -> bool {
         self.0 & Page::PRESENT != 0
     }
+    pub fn get_physaddr(self) -> u64 {
+        self.0 & !Page::FLAG_MASK
+    }
+    /// Clear old flags and override with new ones
+    pub fn override_flags(self, flags: u64) -> Self {
+        Self((self.0 & !Page::FLAG_MASK) | flags)
+    }
+    pub fn contains_flags(self, flags: u64) -> bool {
+        self.0 & Page::FLAG_MASK == flags
+    }
 }
+
+const NUM_ENTRIES: usize = 512;
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct AddressSpaceHandle(u16);
+impl AddressSpaceHandle {
+    /// Kernel address space is always #1
+    pub fn get_kernel() -> Self {
+        Self(1)
+    }
+}
 
 pub struct Manager;
 impl Manager {
@@ -24,7 +42,6 @@ impl Manager {
         //db.aspaces[i] = pmm::Manager::alloc_page();
     }
 
-    #[allow(dead_code)]
     fn get_current_cr3() -> u64 {
         let r;
         unsafe {
@@ -39,18 +56,57 @@ impl Manager {
     pub fn new_address_space(db: &mut db::Database, pgtable: pmm::Handle) -> AddressSpaceHandle {
         db.aspaces.push(pgtable);
         let aspace = AddressSpaceHandle((db.aspaces.len() - 1) as u16);
-        //let _start_addr = unsafe { (&KERNEL_START) as *const _ as u64 };
-        //let _end_addr = unsafe { (&KERNEL_END) as *const _ as u64 };
         // We live in the fucking lower half, congrats -- now we get to pay the consequences
+        unsafe extern "C" {
+            unsafe static KERNEL_START: u8;
+            unsafe static KERNEL_END: u8;
+        }
+        let kernel_start = &raw const KERNEL_START as u64;
+        let kernel_end = &raw const KERNEL_END as u64;
+        let kernel_pages = (kernel_end - kernel_start).div_ceil(pmm::PAGE_SIZE as u64) as usize;
         Self::map(
             db,
             aspace,
-            0,
-            0,
-            512,
+            kernel_start,
+            kernel_start,
+            kernel_pages,
             Page::PRESENT | Page::READ_WRITE,
         );
         aspace
+    }
+
+    pub fn traverse_page_table<F>(
+        db: &db::Database,
+        aspace: AddressSpaceHandle,
+        vaddr: u64,
+        mut f: F,
+    )
+    where
+        F: FnMut(&Page),
+    {
+        let index = [
+            (vaddr >> 39) as usize % NUM_ENTRIES,
+            (vaddr >> 30) as usize % NUM_ENTRIES,
+            (vaddr >> 21) as usize % NUM_ENTRIES,
+            (vaddr >> 12) as usize % NUM_ENTRIES,
+        ];
+        let mut table = db.aspaces[aspace.0 as usize].get() as *const Page;
+        for i in 0..index.len() {
+            //kprint!("[vmm] walker {:0x}\r\n", index[i]);
+            unsafe {
+                let entry = table.add(index[i]);
+                if i == index.len() - 1 {
+                    f(entry.as_ref().unwrap());
+                } else {
+                    f(entry.as_ref().unwrap());
+                    table = if (*entry).is_present() {
+                        ((*entry).0 & !Page::FLAG_MASK) as *const Page
+                    } else {
+                        break;
+                    };
+                }
+            }
+        }
     }
 
     /// Maps a single page, if the page already exists it will simply go into the next level
@@ -63,11 +119,12 @@ impl Manager {
         vaddr: u64,
         flags: u64,
     ) {
+        kprint!("Mapping {paddr:0x} => {vaddr:0x}\r\n",);
         let index = [
-            ((vaddr >> 39) % 512) as usize,
-            ((vaddr >> 30) % 512) as usize,
-            ((vaddr >> 21) % 512) as usize,
-            ((vaddr >> 12) % 512) as usize,
+            (vaddr >> 39) as usize % NUM_ENTRIES,
+            (vaddr >> 30) as usize % NUM_ENTRIES,
+            (vaddr >> 21) as usize % NUM_ENTRIES,
+            (vaddr >> 12) as usize % NUM_ENTRIES,
         ];
         let mut table = db.aspaces[aspace.0 as usize].get_mut() as *mut Page;
         for i in 0..index.len() {
@@ -78,10 +135,11 @@ impl Manager {
                     *entry = Page((paddr & !Page::FLAG_MASK) | flags);
                 } else {
                     table = if (*entry).is_present() {
-                        if (*entry).0 & Page::FLAG_MASK != flags {
-                            (*entry).0 = ((*entry).0 & !Page::FLAG_MASK) | flags;
+                        // Always override flags
+                        if !(*entry).contains_flags(flags) {
+                            *entry = (*entry).override_flags(flags);
                         }
-                        ((*entry).0 & !Page::FLAG_MASK) as *mut Page
+                        ((*entry).get_physaddr()) as *mut Page
                     } else {
                         let pd_addr = pmm::Manager::alloc_page_zeroed().get() as u64;
                         //kprint!("[vmm] alloc new addr {pd_addr:016x}\r\n");
@@ -106,6 +164,32 @@ impl Manager {
             Self::map_single(db, aspace, paddr, vaddr, flags);
             paddr += pmm::PAGE_SIZE as u64;
             vaddr += pmm::PAGE_SIZE as u64;
+        }
+    }
+
+    pub fn has_mapping_present(
+        db: &db::Database,
+        aspace: AddressSpaceHandle,
+        vaddr: u64,
+    ) -> bool {
+        let index = [
+            (vaddr >> 39) as usize % NUM_ENTRIES,
+            (vaddr >> 30) as usize % NUM_ENTRIES,
+            (vaddr >> 21) as usize % NUM_ENTRIES,
+            (vaddr >> 12) as usize % NUM_ENTRIES,
+        ];
+        let mut table = db.aspaces[aspace.0 as usize].get() as *const Page;
+        unsafe {
+            for i in 0..(index.len() - 1) {
+                let entry = table.add(index[i]);
+                table = if (*entry).is_present() {
+                    ((*entry).get_physaddr()) as *const Page
+                } else {
+                    return false;
+                };
+            }
+            let entry = table.add(index[index.len() - 1]);
+            (*entry).is_present()
         }
     }
 
