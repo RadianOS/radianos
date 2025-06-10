@@ -165,6 +165,21 @@ impl IntrusiveIntervalTree {
             None
         }
     }
+    fn find_by_base(&mut self, index: usize, base: usize) -> Option<usize> {
+        if self.nodes[index].is_present() {
+            if self.nodes[index].base == base {
+                return Some(index);
+            } else if let Some(left) = self.find_free(self.nodes[index].left, base) {
+                return Some(left);
+            } else if let Some(right) = self.find_free(self.nodes[index].right, base) {
+                return Some(right);
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
 
     fn print_debug(&self, index: usize, level: usize) {
         let tree_print_node = |index: usize, level: usize| {
@@ -304,9 +319,6 @@ unsafe impl GlobalAlloc for TbsAllocator {
                             vmm::Manager::map(db, aspace, handle.get() as u64, (new_ptr & !0xfff) as u64, 1, vmm::Page::PRESENT | vmm::Page::READ_WRITE);
                         }
                         return new_ptr as *mut u8;
-                    } else {
-                        tree.print_debug(tree.root, 0);
-                        unreachable!();
                     }
                 }
             }
@@ -314,7 +326,26 @@ unsafe impl GlobalAlloc for TbsAllocator {
         unreachable!()
     }
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        // uh lmao
+        if layout.size() == 0 {
+            unreachable!(); // ne
+        }
+        assert!(layout.align() <= CACHE_LINE_SIZE);
+        let aligned_size = layout.size().div_ceil(CACHE_LINE_SIZE) * CACHE_LINE_SIZE;
+        unsafe {
+            let arenas = &raw mut TBS_ALLOCATOR.arenas;
+            for i in 0..MAX_ARENAS {
+                if (*arenas)[i].is_present() {
+                    let tree = ((*arenas)[i].get_base_mut() as *mut IntrusiveIntervalTree)
+                        .as_mut().unwrap();
+                    if let Some(used) = tree.find_by_base(tree.root, ptr as usize) {
+                        // TODO: better merge algo this is literally a fuckign joke
+                        tree.nodes[used].is_free = true;
+                        return;
+                    }
+                }
+            }
+        }
+        unreachable!()
     }
 }
 #[global_allocator]
