@@ -13,3 +13,4 @@ crate-type = ["staticlib", "rlib"]
 [dependencies]
 xmas-elf = "0.10.0"
 iced-x86 = { version = "1.21.0", default-features = false, features = ["no_std", "gas", "decoder", "encoder"] }
+ansic = "0.1.1"

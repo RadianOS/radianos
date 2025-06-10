@@ -3,9 +3,18 @@
 #![feature(str_from_raw_parts)]
 
 extern crate alloc;
+use crate::styles::{BBRRED, BRED, RADOS, RBRRED, RESET, USER};
 use core::{arch::global_asm, str};
 use iced_x86::Formatter;
-use radian_core::{containers::{StaticString, StaticVec}, cpu, prelude::*, smp, task, vmm, weak_typed_enum, TbsAlloc};
+use radian_core::{
+    TbsAlloc,
+    containers::{StaticString, StaticVec},
+    cpu,
+    prelude::*,
+    smp,
+    styles::{BRED, RBRRED, RESET},
+    task, vmm, weak_typed_enum,
+};
 
 /// Do not remove these or bootloader fails due to 0-sized section, thanks
 #[allow(dead_code)]
@@ -55,9 +64,13 @@ fn parse_literal(a: &str) -> Option<usize> {
 }
 
 fn parse_boolean(a: &str) -> Option<bool> {
-    if a.eq_ignore_ascii_case("yes") || a.eq_ignore_ascii_case("on")
-    || a.eq_ignore_ascii_case("true") || a.eq_ignore_ascii_case("y")
-    || a.eq_ignore_ascii_case("t") || a.eq_ignore_ascii_case("1") {
+    if a.eq_ignore_ascii_case("yes")
+        || a.eq_ignore_ascii_case("on")
+        || a.eq_ignore_ascii_case("true")
+        || a.eq_ignore_ascii_case("y")
+        || a.eq_ignore_ascii_case("t")
+        || a.eq_ignore_ascii_case("1")
+    {
         Some(true)
     } else {
         Some(false)
@@ -67,11 +80,7 @@ fn parse_boolean(a: &str) -> Option<bool> {
 #[unsafe(naked)]
 #[unsafe(no_mangle)]
 unsafe extern "C" fn test_usermode_thunk() {
-    core::arch::naked_asm!(
-    "2:",
-        "pause",
-        "jmp 2b"
-    );
+    core::arch::naked_asm!("2:", "pause", "jmp 2b");
 }
 
 struct ConsoleState<'a> {
@@ -90,16 +99,15 @@ struct Command {
     handler: fn(&mut ConsoleState, &str),
 }
 
-
 const COMMANDS: [Command; 28] = [
-    Command{
+    Command {
         name: "help",
         desc: "get help",
         handler: |state, s| {
             for c in COMMANDS.iter() {
                 kprint!("* {}: {}\r\n", c.name, c.desc);
             }
-        }
+        },
     },
     Command {
         name: "clear",
@@ -109,9 +117,9 @@ const COMMANDS: [Command; 28] = [
             kprint!("\x1b[2J");
             // Move cursor to home position (0,0)
             kprint!("\x1b[H");
-        }
+        },
     },
-    Command{
+    Command {
         name: "list",
         desc: "list all nodes",
         handler: |state, s| {
@@ -120,9 +128,9 @@ const COMMANDS: [Command; 28] = [
                 let name = node.get_name();
                 kprint!("- {}\r\n", name);
             });
-        }
+        },
     },
-    Command{
+    Command {
         name: "leak",
         desc: "<length> [align] leak this amt of memory",
         handler: |state, s| {
@@ -133,9 +141,9 @@ const COMMANDS: [Command; 28] = [
                     kprint!("{:?}\r\n", p);
                 }
             }
-        }
+        },
     },
-    Command{
+    Command {
         name: "mapl",
         desc: "<vaddr/paddr> <count> <flags>",
         handler: |state, s| {
@@ -161,9 +169,9 @@ const COMMANDS: [Command; 28] = [
             } else {
                 kprint!("invalid addr\r\n");
             }
-        }
+        },
     },
-    Command{
+    Command {
         name: "map",
         desc: "<vaddr> <paddr> <count> <flags>",
         handler: |state, s| {
@@ -193,25 +201,25 @@ const COMMANDS: [Command; 28] = [
             } else {
                 kprint!("invalid vaddr\r\n");
             }
-        }
+        },
     },
-    Command{
+    Command {
         name: "rule_list",
         desc: "list policy rules",
         handler: |state, s| {
             policy::Manager::for_each_policy_rule(state.db, |rule| {
                 kprint!("- {:?}\r\n", rule);
             });
-        }
+        },
     },
-    Command{
+    Command {
         name: "tlb_reload",
         desc: "reload tlb",
         handler: |state, s| {
             vmm::Manager::reload_cr3(state.db, state.current_aspace);
-        }
+        },
     },
-    Command{
+    Command {
         name: "cd",
         desc: "change node or print current",
         handler: |state, s| {
@@ -231,9 +239,9 @@ const COMMANDS: [Command; 28] = [
                 let name = vfs::Manager::get_node(state.db, state.current_node).get_name();
                 kprint!("{}\r\n", name);
             }
-        }
+        },
     },
-    Command{
+    Command {
         name: "rule_remove",
         desc: "<index>",
         handler: |state, s| {
@@ -247,16 +255,16 @@ const COMMANDS: [Command; 28] = [
             } else {
                 kprint!("missing arg\r\n");
             }
-        }
+        },
     },
-    Command{
+    Command {
         name: "t_user",
         desc: "test usermode",
         handler: |state, s| {
             task::Manager::switch_to_usermode(test_usermode_thunk as u64);
-        }
+        },
     },
-    Command{
+    Command {
         name: "write",
         desc: "<data> to current node",
         handler: |state, s| {
@@ -273,47 +281,49 @@ const COMMANDS: [Command; 28] = [
             } else {
                 kprint!("missing arg\r\n");
             }
-        }
+        },
     },
-    Command{
+    Command {
         name: "tree",
         desc: "list node tree",
         handler: |state, s| {
-            tree_traverse_node(state.db,state. current_node, 0);
-        }
+            tree_traverse_node(state.db, state.current_node, 0);
+        },
     },
-    Command{
+    Command {
         name: "aspace",
         desc: "<id> make new address space",
         handler: |state, s| {
-            state.current_aspace = vmm::Manager::new_address_space(state.db, pmm::Manager::alloc_page_zeroed());
+            state.current_aspace =
+                vmm::Manager::new_address_space(state.db, pmm::Manager::alloc_page_zeroed());
             kprint!("new aspace {:?}\r\n", state.current_aspace);
-        }
+        },
     },
-    Command{
+    Command {
         name: "worker",
         desc: "[id] make new worker or set",
         handler: |state, s| {
             let mut split = s.split_whitespace();
             if let Some(Some(index)) = split.next().map(parse_literal) {
-                state.current_actor = db::ObjectHandle::new::<{db::ObjectHandle::WORKER}>(index as u16);
+                state.current_actor =
+                    db::ObjectHandle::new::<{ db::ObjectHandle::WORKER }>(index as u16);
                 kprint!("set {:?}\r\n", state.current_actor);
             } else {
                 state.current_actor = task::Manager::new_worker(state.db, state.current_aspace);
                 kprint!("new {:?}\r\n", state.current_actor);
             }
-        }
+        },
     },
-    Command{
+    Command {
         name: "new_task",
         desc: "make new task in worker",
         handler: |state, s| {
             let handle = task::Manager::new_task(state.db, state.current_actor).unwrap();
             state.current_task = handle;
             kprint!("new {:?}\r\n", state.current_task);
-        }
+        },
     },
-    Command{
+    Command {
         name: "rip3_to",
         desc: "jump to <addr>",
         handler: |state, s| {
@@ -322,9 +332,9 @@ const COMMANDS: [Command; 28] = [
                 kprint!("jumping to {:016x}\r\n", rip);
                 task::Manager::switch_to_usermode(rip as u64);
             }
-        }
+        },
     },
-    Command{
+    Command {
         name: "test_elf",
         desc: "test load elf",
         handler: |state, s| {
@@ -332,9 +342,9 @@ const COMMANDS: [Command; 28] = [
             task::Manager::load_elf_into_worker(state.db, state.current_actor, elf_bytes, true);
             vmm::Manager::reload_cr3(state.db, state.current_aspace);
             task::Manager::switch_to_usermode(0x200000);
-        }
+        },
     },
-    Command{
+    Command {
         name: "int",
         desc: "<num> do an interrupts",
         handler: |state, s| {
@@ -355,9 +365,9 @@ const COMMANDS: [Command; 28] = [
                     f();
                 }
             }
-        }
+        },
     },
-    Command{
+    Command {
         name: "sti",
         desc: "<on/off> enable/disable interrupts",
         handler: |state, s| {
@@ -369,51 +379,59 @@ const COMMANDS: [Command; 28] = [
                     cpu::Manager::set_interrupts::<false>();
                 }
             }
-        }
+        },
     },
-    Command{
+    Command {
         name: "users",
         desc: "list users",
         handler: |state, s| {
             policy::Manager::for_each_user(state.db, |user| {
                 kprint!("- {}\r\n", user.get_name());
             });
-        }
+        },
     },
-    Command{
+    Command {
         name: "groups",
         desc: "list groups",
         handler: |state, s| {
             policy::Manager::for_each_group(state.db, |group| {
                 kprint!("- {}\r\n", group.get_name());
             });
-        }
+        },
     },
-    Command{
+    Command {
         name: "history",
         desc: "print local command history",
         handler: |state, s| {
             for c in 0..state.history_stack.len() {
                 kprint!("{}\r\n", state.history_stack[c].as_str());
             }
-        }
+        },
     },
-    Command{
+    Command {
         name: "pal",
         desc: "print allocator info",
         handler: |state, s| {
             TbsAlloc::print_debug();
-        }
+        },
     },
-    Command{
+    Command {
         name: "poke",
         desc: "<addr> <value> <count> poke address (byte)",
         handler: |state, s| {
             let mut split = s.split_whitespace();
             if let Some(Some(addr)) = split.next().map(parse_literal) {
                 if let Some(Some(value)) = split.next().map(parse_literal) {
-                    if vmm::Manager::has_mapping_present(&state.db, state.current_aspace, addr as u64) {
-                        let len = split.next().map(parse_literal).unwrap_or(Some(1)).unwrap_or(1);
+                    if vmm::Manager::has_mapping_present(
+                        &state.db,
+                        state.current_aspace,
+                        addr as u64,
+                    ) {
+                        let len = split
+                            .next()
+                            .map(parse_literal)
+                            .unwrap_or(Some(1))
+                            .unwrap_or(1);
                         let ptr = addr as *mut u8;
                         unsafe {
                             ptr.write_bytes(value as u8, len);
@@ -425,15 +443,19 @@ const COMMANDS: [Command; 28] = [
             } else {
                 kprint!("invalid addr\r\n");
             }
-        }
+        },
     },
-    Command{
+    Command {
         name: "peek",
         desc: "<addr> <count> peek address",
         handler: |state, s| {
             let mut split = s.split_whitespace();
             if let Some(Some(addr)) = split.next().map(parse_literal) {
-                let len = split.next().map(parse_literal).unwrap_or(Some(1)).unwrap_or(1);
+                let len = split
+                    .next()
+                    .map(parse_literal)
+                    .unwrap_or(Some(1))
+                    .unwrap_or(1);
                 if vmm::Manager::has_mapping_present(&state.db, state.current_aspace, addr as u64) {
                     let ptr = addr as *const u8;
                     unsafe {
@@ -454,9 +476,9 @@ const COMMANDS: [Command; 28] = [
             } else {
                 kprint!("invalid addr\r\n");
             }
-        }
+        },
     },
-    Command{
+    Command {
         name: "swap",
         desc: "initiate hotswap procedure",
         handler: |state, s| {
@@ -487,9 +509,9 @@ const COMMANDS: [Command; 28] = [
                     options(nostack)
                 );
             }
-        }
+        },
     },
-    Command{
+    Command {
         name: "dis",
         desc: "<addr> <count>",
         handler: |state, s| {
@@ -498,7 +520,12 @@ const COMMANDS: [Command; 28] = [
                 let length = split.next().map(parse_literal).unwrap_or(Some(4)).unwrap();
                 if vmm::Manager::has_mapping_present(&state.db, state.current_aspace, addr as u64) {
                     let slice = unsafe { core::slice::from_raw_parts(addr as *const u8, length) };
-                    let mut decoder = iced_x86::Decoder::with_ip(64, slice, addr as u64, iced_x86::DecoderOptions::NONE);
+                    let mut decoder = iced_x86::Decoder::with_ip(
+                        64,
+                        slice,
+                        addr as u64,
+                        iced_x86::DecoderOptions::NONE,
+                    );
                     let mut formatter = iced_x86::GasFormatter::new();
                     let mut instruction = iced_x86::Instruction::default();
                     let mut output = alloc::string::String::new();
@@ -514,7 +541,7 @@ const COMMANDS: [Command; 28] = [
             } else {
                 kprint!("invalid addr\r\n");
             }
-        }
+        },
     },
 ];
 
@@ -585,7 +612,7 @@ extern "sysv64" fn rust_start(entries: *mut pmm::MemoryEntry, num_entries: usize
     kprint!("[policy] check policy? {res}\r\n");
 
     TbsAlloc::TbsAllocator::init(db, kernel_aspace);
-//    TbsAlloc::test_self();
+    //    TbsAlloc::test_self();
     let ref_box = alloc::boxed::Box::new(065);
     kprint!("{ref_box:?}\r\n");
 
@@ -598,7 +625,7 @@ extern "sysv64" fn rust_start(entries: *mut pmm::MemoryEntry, num_entries: usize
         if c == '\n' || c == '\r' {
             if c != last_char {
                 last_char = c;
-                kprint!("\x1b[0;0m\r\n");
+                kprint!("{RESET}\r\n");
             } else {
                 kprint!("\r\n");
             }
@@ -607,12 +634,12 @@ extern "sysv64" fn rust_start(entries: *mut pmm::MemoryEntry, num_entries: usize
             kprint!(
                 "{}",
                 match c {
-                    'B' => "\x1b[0;91m",
-                    '&' => "\x1b[1;91m",
-                    '#' => "\x1b[0;91m",
-                    'P' => "\x1b[0;91m",
-                    'G' => "\x1b[1;31m",
-                    _ => "\x1b[0;0m",
+                    'B' => RBRRED,
+                    '&' => BBRRED,
+                    '#' => RBRRED,
+                    'P' => RBRRED,
+                    'G' => BRED,
+                    _ => RESET,
                 }
             );
             kprint!("{}", c);
@@ -620,10 +647,10 @@ extern "sysv64" fn rust_start(entries: *mut pmm::MemoryEntry, num_entries: usize
             kprint!("{}", c);
         }
     }
-    kprint!("\x1b[0;0m\r\n");
+    kprint!("{RESET}\r\n");
 
     kprint!("kernel test console, type <help>?\r\n");
-    let mut state = ConsoleState{
+    let mut state = ConsoleState {
         current_actor: db.find_from_str("worker_0").unwrap(),
         current_aspace: kernel_aspace,
         current_node: vfs::NodeHandle::default(),
@@ -638,7 +665,7 @@ extern "sysv64" fn rust_start(entries: *mut pmm::MemoryEntry, num_entries: usize
 
         let user_name = policy::Manager::get_user(state.db, state.current_user).get_name();
         let hostname = "radiant-pc";
-        kprint!("\x1b[1;31mRadianOS:\x1b[1;33m{user_name}@{hostname}\x1b[0;0m>");
+        kprint!("{RADOS}mRadianOS:{USER}{user_name}@{hostname}{RESET}>");
         loop {
             if let Some(b) = DebugSerial::get_byte() {
                 if b == b'\r' || index >= line.max_len() {
@@ -646,7 +673,8 @@ extern "sysv64" fn rust_start(entries: *mut pmm::MemoryEntry, num_entries: usize
                     let s = line.as_str();
                     let mut split = s.split_whitespace();
                     if let Some(cmd) = split.next() {
-                        if let Some(c) = COMMANDS.iter().find(|&c| c.name.eq_ignore_ascii_case(cmd)) {
+                        if let Some(c) = COMMANDS.iter().find(|&c| c.name.eq_ignore_ascii_case(cmd))
+                        {
                             let args = split.next().unwrap_or("");
                             (c.handler)(&mut state, args);
                         } else {
