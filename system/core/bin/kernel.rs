@@ -663,7 +663,7 @@ extern "sysv64" fn rust_start(entries: *mut pmm::MemoryEntry, num_entries: usize
 
         let user_name = policy::Manager::get_user(state.db, state.current_user).get_name();
         let hostname = "radiant-pc";
-        kprint!("{RADOS}mRadianOS:{USER}{user_name}@{hostname}{RESET}>");
+        kprint!("{RADOS}RadianOS:{USER}{user_name}@{hostname}{RESET}>");
         loop {
             if let Some(b) = DebugSerial::get_byte() {
                 if b == b'\r' || index >= line.max_len() {

@@ -3,6 +3,25 @@
 version = 4
 
 [[package]]
+name = "ansic"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bee0fa88fe0534311922539a84078b1bf137ae448763f7314aab410c28f3c42e"
+dependencies = [
+ "ansic-macros",
+]
+
+[[package]]
+name = "ansic-macros"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1dc11e49578ae4bf0df28f17516c0e9d006a04cefcedcb006b81134552e2cc8d"
+dependencies = [
+ "proc-macro2",
+ "syn",
+]
+
+[[package]]
 name = "bit_field"
 version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -101,6 +120,7 @@ dependencies = [
 name = "radian_core"
 version = "0.1.4"
 dependencies = [
+ "ansic",
  "iced-x86",
  "xmas-elf",
 ]
