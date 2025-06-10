@@ -25,6 +25,7 @@ pub const ARENA_DEFAULT_SPACING: usize = 0x1000_0000; //1 GiB from each other
 struct IntrusiveIntervalNode {
     base: usize,
     length: usize,
+    is_free: bool,
     left: usize,
     right: usize,
     height: i8,
@@ -60,6 +61,7 @@ impl IntrusiveIntervalTree {
         let root = self.alloc_node();
         self.nodes[root].base = root_base;
         self.nodes[root].length = root_length;
+        self.nodes[root].is_free = true;
         self.root = root;
     }
     #[inline] fn get_node<'a>(&'a self, index: usize) -> &'a IntrusiveIntervalNode {
@@ -75,6 +77,18 @@ impl IntrusiveIntervalTree {
             }
         }
         self.extent += 1;
+        // This is horrible but i don't give a fuck
+        unsafe {
+            // EVIL NON-DETERMINISM IF YOU DONT DO THIS
+            self.nodes[self.extent] = IntrusiveIntervalNode::default();
+            let vaddr = &raw const self.nodes[self.extent] as u64;
+            let db = db::Database::get_mut();
+            let aspace =vmm::AddressSpaceHandle::get_kernel();
+            if !vmm::Manager::has_mapping_present(db, aspace, (vaddr & !0xfff) as u64) {
+                let handle = pmm::Manager::alloc_page();
+                vmm::Manager::map(db, aspace, handle.get() as u64, (vaddr & !0xfff) as u64, 1, vmm::Page::PRESENT | vmm::Page::READ_WRITE);
+            }
+        }
         self.extent - 1
     }
     fn max_height(&self, index: usize) -> i8 {
@@ -107,12 +121,12 @@ impl IntrusiveIntervalTree {
             0
         }
     }
-    fn insert(&mut self, index: usize, base: usize, length: usize) -> usize {
+    fn insert(&mut self, index: usize, base: usize, length: usize, is_free: bool) -> usize {
         if self.nodes[index].is_present() {
             if base < self.nodes[index].base {
-                self.nodes[index].left = self.insert(self.nodes[index].left, base, length);
+                self.nodes[index].left = self.insert(self.nodes[index].left, base, length, is_free);
             } else if base > self.nodes[index].base {
-                self.nodes[index].right = self.insert(self.nodes[index].right, base, length);
+                self.nodes[index].right = self.insert(self.nodes[index].right, base, length, is_free);
             }
             self.nodes[index].height = 1 + self.max_height(index);
             let balance = self.get_balance(index);
@@ -132,12 +146,47 @@ impl IntrusiveIntervalTree {
             let new_node = self.alloc_node();
             self.nodes[new_node].base = base;
             self.nodes[new_node].length = length;
+            self.nodes[new_node].is_free = is_free;
             new_node
+        }
+    }
+    fn find_free(&mut self, index: usize, length: usize) -> Option<usize> {
+        if self.nodes[index].is_present() {
+            if self.nodes[index].length >= length && self.nodes[index].is_free == true {
+                return Some(index);
+            } else if let Some(left) = self.find_free(self.nodes[index].left, length) {
+                return Some(left);
+            } else if let Some(right) = self.find_free(self.nodes[index].right, length) {
+                return Some(right);
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
+
+    fn print_debug(&self, index: usize, level: usize) {
+        let tree_print_node = |index: usize, level: usize| {
+            if level > 0 {
+                for i in 0..level - 1 {
+                    kprint!("│   ");
+                }
+                kprint!("└── ");
+            }
+            kprint!("{:0x}:{:0x}:{}\r\n", self.nodes[index].base, self.nodes[index].length,
+                ['U','F'][self.nodes[index].is_free as usize]);
+        };
+        if self.nodes[index].is_present() {
+            tree_print_node(index, level);
+            self.print_debug(self.nodes[index].left, level + 1);
+            self.print_debug(self.nodes[index].right, level + 1);
+        } else {
+
         }
     }
 }
 
-#[unsafe(no_mangle)]
 pub fn test_self() {
     unsafe {
         let mut buffer = [0u8; 1024];
@@ -145,9 +194,22 @@ pub fn test_self() {
         IntrusiveIntervalTree::init(tree.as_mut().unwrap(), 64, 64);
         kprint!("[tbs] root={}\r\n", (*tree).root);
         for i in 0..4 {
-            let new_root = tree.as_mut().unwrap().insert((*tree).root, 65535 - 1024 * i, 512 * i);
+            let new_root = tree.as_mut().unwrap().insert((*tree).root, 65535 - 1024 * i, 512 * i, true);
             (*tree).root = new_root;
             kprint!("[tbs] insert={new_root}\r\n",);
+        }
+    }
+}
+pub fn print_debug() {
+    unsafe {
+        let arenas = &raw mut TBS_ALLOCATOR.arenas;
+        for i in 0..MAX_ARENAS {
+            if (*arenas)[i].is_present() {
+                kprint!("==>Arena#{i}\r\n");
+                let tree = ((*arenas)[i].get_base_mut() as *mut IntrusiveIntervalTree)
+                    .as_mut().unwrap();
+                tree.print_debug(tree.root, 0);
+            }
         }
     }
 }
@@ -213,6 +275,9 @@ impl TbsAllocator {
 }
 unsafe impl GlobalAlloc for TbsAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        if layout.size() == 0 {
+            return core::ptr::null_mut();
+        }
         assert!(layout.align() <= CACHE_LINE_SIZE);
         let aligned_size = layout.size().div_ceil(CACHE_LINE_SIZE) * CACHE_LINE_SIZE;
         unsafe {
@@ -221,21 +286,31 @@ unsafe impl GlobalAlloc for TbsAllocator {
                 if (*arenas)[i].is_present() {
                     let tree = ((*arenas)[i].get_base_mut() as *mut IntrusiveIntervalTree)
                         .as_mut().unwrap();
-                    let new_ptr = tree.nodes[tree.root].base + tree.nodes[tree.root].length - aligned_size;
-                    tree.nodes[tree.root].length -= aligned_size;
-                    tree.root = tree.insert(tree.root, new_ptr, aligned_size);
-
-                    // Map if not already
-                    let aspace = vmm::AddressSpaceHandle::get_kernel();
-                    let db = db::Database::get_mut();
-                    if !vmm::Manager::has_mapping_present(db, aspace, (new_ptr & !0xfff) as u64) {
-                        let handle = pmm::Manager::alloc_page();
-                        vmm::Manager::map(db, aspace, handle.get() as u64, (new_ptr & !0xfff) as u64, 1, vmm::Page::PRESENT | vmm::Page::READ_WRITE);
+                    if let Some(free) = tree.find_free(tree.root, aligned_size) {
+                        let new_ptr;
+                        if tree.nodes[free].length == aligned_size {
+                            new_ptr = tree.nodes[free].base;
+                            tree.nodes[free].is_free = false;
+                        } else {
+                            new_ptr = tree.nodes[free].base + tree.nodes[free].length - aligned_size;
+                            tree.nodes[free].length -= aligned_size;
+                            tree.root = tree.insert(tree.root, new_ptr, aligned_size, false);
+                        }
+                        // Map if not already
+                        let aspace = vmm::AddressSpaceHandle::get_kernel();
+                        let db = db::Database::get_mut();
+                        if !vmm::Manager::has_mapping_present(db, aspace, (new_ptr & !0xfff) as u64) {
+                            let handle = pmm::Manager::alloc_page();
+                            vmm::Manager::map(db, aspace, handle.get() as u64, (new_ptr & !0xfff) as u64, 1, vmm::Page::PRESENT | vmm::Page::READ_WRITE);
+                        }
+                        return new_ptr as *mut u8;
+                    } else {
+                        tree.print_debug(tree.root, 0);
+                        unreachable!();
                     }
-                    return new_ptr as *mut u8;
                 }
             }
-        }   
+        }
         unreachable!()
     }
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {

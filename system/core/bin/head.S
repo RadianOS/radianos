@@ -42,8 +42,8 @@ uefi_param_cr3:
     .zero 8
 
 .section .text.hotswap
-.global _Zfnhotswap_header
-_Zfnhotswap_header:
+.global hotswap_uart
+hotswap_uart:
     movq $(0x100000 + 8192), %rsi
 1:
     movw $(0x3f8 + 5), %dx
@@ -56,3 +56,8 @@ _Zfnhotswap_header:
     incq %rsi
     loop 1b
     jmp reentrant_start
+
+.section .text
+.global quick_monitor_area
+quick_monitor_area:
+    .zero 32

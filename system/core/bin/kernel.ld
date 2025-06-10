@@ -33,7 +33,7 @@ SECTIONS {
         *(.sbss* .sbss.*)
         . = ALIGN(4096);
         PROVIDE(STACK_BOTTOM = .);
-        . += 8192;
+        . += (4096 * 3);
         PROVIDE(STACK_TOP = .);
         PROVIDE(BSS_END = .);
     } >ram AT>ram :bss

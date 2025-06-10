@@ -4,6 +4,7 @@
 
 extern crate alloc;
 use core::{arch::global_asm, str};
+use iced_x86::Formatter;
 use radian_core::{containers::{StaticString, StaticVec}, cpu, prelude::*, smp, task, vmm, weak_typed_enum, TbsAlloc};
 
 /// Do not remove these or bootloader fails due to 0-sized section, thanks
@@ -53,6 +54,16 @@ fn parse_literal(a: &str) -> Option<usize> {
     }
 }
 
+fn parse_boolean(a: &str) -> Option<bool> {
+    if a.eq_ignore_ascii_case("yes") || a.eq_ignore_ascii_case("on")
+    || a.eq_ignore_ascii_case("true") || a.eq_ignore_ascii_case("y")
+    || a.eq_ignore_ascii_case("t") || a.eq_ignore_ascii_case("1") {
+        Some(true)
+    } else {
+        Some(false)
+    }
+}
+
 #[unsafe(naked)]
 #[unsafe(no_mangle)]
 unsafe extern "C" fn test_usermode_thunk() {
@@ -80,7 +91,7 @@ struct Command {
 }
 
 
-const COMMANDS: [Command; 27] = [
+const COMMANDS: [Command; 28] = [
     Command{
         name: "help",
         desc: "get help",
@@ -109,6 +120,19 @@ const COMMANDS: [Command; 27] = [
                 let name = node.get_name();
                 kprint!("- {}\r\n", name);
             });
+        }
+    },
+    Command{
+        name: "leak",
+        desc: "<length> [align] leak this amt of memory",
+        handler: |state, s| {
+            let mut split = s.split_whitespace();
+            if let Some(Some(size)) = split.next().map(parse_literal) {
+                unsafe {
+                    let p = alloc::alloc::alloc(alloc::alloc::Layout::array::<u8>(size).unwrap());
+                    kprint!("{:?}\r\n", p);
+                }
+            }
         }
     },
     Command{
@@ -189,7 +213,7 @@ const COMMANDS: [Command; 27] = [
     },
     Command{
         name: "cd",
-        desc: "change node",
+        desc: "change node or print current",
         handler: |state, s| {
             let mut split = s.split_whitespace();
             if let Some(name) = split.next() {
@@ -204,16 +228,9 @@ const COMMANDS: [Command; 27] = [
                     kprint!("{} not found\r\n", name);
                 }
             } else {
-                kprint!("missing arg\r\n");
+                let name = vfs::Manager::get_node(state.db, state.current_node).get_name();
+                kprint!("{}\r\n", name);
             }
-        }
-    },
-    Command{
-        name: "at",
-        desc: "get current node",
-        handler: |state, s| {
-            let name = vfs::Manager::get_node(state.db, state.current_node).get_name();
-            kprint!("{}\r\n", name);
         }
     },
     Command{
@@ -319,23 +336,39 @@ const COMMANDS: [Command; 27] = [
     },
     Command{
         name: "int",
-        desc: "do an interrupts",
+        desc: "<num> do an interrupts",
         handler: |state, s| {
-            unsafe{core::arch::asm!("int $0x20");}
-        }
-    },
-    Command{
-        name: "cli",
-        desc: "disable interrupts",
-        handler: |state, s| {
-            cpu::Manager::set_interrupts::<false>();
+            let mut split = s.split_whitespace();
+            if let Some(Some(value)) = split.next().map(parse_literal) {
+                // Originally was gonna do this with a recursive macro but
+                // A) it crashed my compiler
+                // B) it made the binary bigger
+                unsafe extern "C" {
+                    static mut quick_monitor_area: u8;
+                }
+                unsafe {
+                    let p = (&raw mut quick_monitor_area);
+                    p.add(0).write(0xcd); /* int <imm8> */
+                    p.add(1).write(value as u8);
+                    p.add(2).write(0xc3); /* retq */
+                    let f: unsafe extern "C" fn() = core::mem::transmute(p);
+                    f();
+                }
+            }
         }
     },
     Command{
         name: "sti",
-        desc: "enable interrupts",
+        desc: "<on/off> enable/disable interrupts",
         handler: |state, s| {
-            cpu::Manager::set_interrupts::<false>();
+            let mut split = s.split_whitespace();
+            if let Some(Some(value)) = split.next().map(parse_boolean) {
+                if value {
+                    cpu::Manager::set_interrupts::<true>();
+                } else {
+                    cpu::Manager::set_interrupts::<false>();
+                }
+            }
         }
     },
     Command{
@@ -366,16 +399,27 @@ const COMMANDS: [Command; 27] = [
         }
     },
     Command{
+        name: "pal",
+        desc: "print allocator info",
+        handler: |state, s| {
+            TbsAlloc::print_debug();
+        }
+    },
+    Command{
         name: "poke",
         desc: "<addr> <value> <count> poke address (byte)",
         handler: |state, s| {
             let mut split = s.split_whitespace();
             if let Some(Some(addr)) = split.next().map(parse_literal) {
                 if let Some(Some(value)) = split.next().map(parse_literal) {
-                    let len = split.next().map(parse_literal).unwrap_or(Some(1)).unwrap_or(1);
-                    let ptr = addr as *mut u8;
-                    unsafe {
-                        ptr.write_bytes(value as u8, len);
+                    if vmm::Manager::has_mapping_present(&state.db, state.current_aspace, addr as u64) {
+                        let len = split.next().map(parse_literal).unwrap_or(Some(1)).unwrap_or(1);
+                        let ptr = addr as *mut u8;
+                        unsafe {
+                            ptr.write_bytes(value as u8, len);
+                        }
+                    } else {
+                        kprint!("area not mapped\r\n");
                     }
                 }
             } else {
@@ -390,18 +434,22 @@ const COMMANDS: [Command; 27] = [
             let mut split = s.split_whitespace();
             if let Some(Some(addr)) = split.next().map(parse_literal) {
                 let len = split.next().map(parse_literal).unwrap_or(Some(1)).unwrap_or(1);
-                let ptr = addr as *const u8;
-                unsafe {
-                    for i in 0..len {
-                        if i == 0 || i % 8 == 0 {
-                            if i != 0 {
-                                kprint!("\r\n");
+                if vmm::Manager::has_mapping_present(&state.db, state.current_aspace, addr as u64) {
+                    let ptr = addr as *const u8;
+                    unsafe {
+                        for i in 0..len {
+                            if i == 0 || i % 8 == 0 {
+                                if i != 0 {
+                                    kprint!("\r\n");
+                                }
+                                kprint!("{:016x} ", ptr as usize + i);
                             }
-                            kprint!("{:016x} ", ptr as usize + i);
+                            kprint!("{:02x} ", ptr.add(i).read());
                         }
-                        kprint!("{:02x} ", ptr.add(i).read());
+                        kprint!("\r\n");
                     }
-                    kprint!("\r\n");
+                } else {
+                    kprint!("area not mapped\r\n");
                 }
             } else {
                 kprint!("invalid addr\r\n");
@@ -433,11 +481,38 @@ const COMMANDS: [Command; 27] = [
             let file_size = numbuf.as_str().parse::<u64>().unwrap() - 8192;
             unsafe {
                 core::arch::asm!(
-                    "jmp _Zfnhotswap_header",
+                    "jmp hotswap_uart",
                     in("rcx") file_size,
                     options(noreturn),
                     options(nostack)
                 );
+            }
+        }
+    },
+    Command{
+        name: "dis",
+        desc: "<addr> <count>",
+        handler: |state, s| {
+            let mut split = s.split_whitespace();
+            if let Some(Some(addr)) = split.next().map(parse_literal) {
+                let length = split.next().map(parse_literal).unwrap_or(Some(4)).unwrap();
+                if vmm::Manager::has_mapping_present(&state.db, state.current_aspace, addr as u64) {
+                    let slice = unsafe { core::slice::from_raw_parts(addr as *const u8, length) };
+                    let mut decoder = iced_x86::Decoder::with_ip(64, slice, addr as u64, iced_x86::DecoderOptions::NONE);
+                    let mut formatter = iced_x86::GasFormatter::new();
+                    let mut instruction = iced_x86::Instruction::default();
+                    let mut output = alloc::string::String::new();
+                    while decoder.can_decode() {
+                        decoder.decode_out(&mut instruction);
+                        output.clear();
+                        formatter.format(&instruction, &mut output);
+                        kprint!("{output}\r\n");
+                    }
+                } else {
+                    kprint!("area not mapped\r\n");
+                }
+            } else {
+                kprint!("invalid addr\r\n");
             }
         }
     },
@@ -509,10 +584,10 @@ extern "sysv64" fn rust_start(entries: *mut pmm::MemoryEntry, num_entries: usize
     assert_eq!(kernel_worker, db.find_from_str("worker_0").unwrap());
     kprint!("[policy] check policy? {res}\r\n");
 
-//    TbsAlloc::TbsAllocator::init(db, kernel_aspace);
+    TbsAlloc::TbsAllocator::init(db, kernel_aspace);
 //    TbsAlloc::test_self();
-    // let ref_box = alloc::boxed::Box::new(065);
-    // kprint!("{ref_box:?}\r\n");
+    let ref_box = alloc::boxed::Box::new(065);
+    kprint!("{ref_box:?}\r\n");
 
     // Enable interrupts :)
     //cpu::Manager::set_interrupts::<true>();
