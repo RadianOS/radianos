@@ -8,6 +8,7 @@
 #![feature(allocator_api)]
 
 use core::str;
+pub mod TbsAlloc;
 pub mod containers;
 pub mod cpu;
 pub mod db;
@@ -15,10 +16,10 @@ pub mod pmm;
 pub mod policy;
 pub mod prelude;
 pub mod smp;
+pub mod styles;
 pub mod task;
 pub mod vfs;
 pub mod vmm;
-pub mod TbsAlloc;
 
 #[macro_export]
 macro_rules! dense_bitfield {
