@@ -118,17 +118,26 @@ impl core::fmt::Write for DebugSerial {
     }
 }
 impl DebugSerial {
-    pub fn get_byte() -> u8 {
+    pub fn get_byte() -> Option<u8> {
         #[allow(unused_assignments)]
         let mut byte = 0;
         unsafe {
             core::arch::asm!(
                 "in al, dx",
                 out("al") byte,
-                in("dx") 0x3f8
+                in("dx") 0x3f8 + 5
             );
+            if byte & 0x01 != 0 {
+                core::arch::asm!(
+                    "in al, dx",
+                    out("al") byte,
+                    in("dx") 0x3f8
+                );
+                Some(byte)
+            } else {
+                None
+            }
         }
-        byte
     }
     pub fn put_byte(b: u8) {
         unsafe {

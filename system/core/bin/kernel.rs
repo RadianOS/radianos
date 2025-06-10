@@ -3,7 +3,7 @@
 #![feature(str_from_raw_parts)]
 
 extern crate alloc;
-use core::str;
+use core::{arch::global_asm, str};
 use radian_core::{containers::{StaticString, StaticVec}, cpu, prelude::*, smp, task, vmm, weak_typed_enum, TbsAlloc};
 
 /// Do not remove these or bootloader fails due to 0-sized section, thanks
@@ -80,7 +80,7 @@ struct Command {
 }
 
 
-const COMMANDS: [Command; 24] = [
+const COMMANDS: [Command; 25] = [
     Command{
         name: "help",
         desc: "get help",
@@ -365,9 +365,42 @@ const COMMANDS: [Command; 24] = [
             }
         }
     },
-
-
+    Command{
+        name: "hotswap",
+        desc: "initiate hotswap procedure",
+        handler: |state, s| {
+            cpu::Manager::set_interrupts::<false>(); //do not interrupt me
+            //
+            // After this point all things like lifetimes, statics, etc are worthless
+            // we will replace them with our new rustacean friend :)
+            //
+            // "Please let this be the last thunk" - NO
+            kprint!("awaiting new kernel...\r\n");
+            let mut numbuf = StaticString::<16>::new();
+            let mut index = 0;
+            'get_size: loop {
+                if let Some(b) = DebugSerial::get_byte() {
+                    if b == 0x0d || b == 0x0a {
+                        break 'get_size;
+                    }
+                    numbuf.bytes_mut()[index] = b;
+                    index += 1;
+                }
+            }
+            let file_size = numbuf.as_str().parse::<u64>().unwrap();
+            unsafe {
+                core::arch::asm!(
+                    "jmp _Zfnhotswap_header",
+                    in("rcx") file_size,
+                    options(noreturn),
+                    options(nostack)
+                );
+            }
+        }
+    },
 ];
+
+global_asm!(include_str!("hotswap.S"), options(att_syntax));
 
 pub fn levenshtein_distance(s1: &str, s2: &str) -> usize {
     if s1.len() >= 16 || s2.len() >= 16 {
@@ -446,11 +479,10 @@ extern "sysv64" fn rust_start(entries: *mut pmm::MemoryEntry, num_entries: usize
     assert_eq!(kernel_worker, db.find_from_str("worker_0").unwrap());
     kprint!("[policy] check policy? {res}\r\n");
 
-    TbsAlloc::TbsAllocator::init(db, kernel_aspace);
-    TbsAlloc::test_self();
-
-    let ref_box = alloc::boxed::Box::new(065);
-    kprint!("{ref_box:?}\r\n");
+//    TbsAlloc::TbsAllocator::init(db, kernel_aspace);
+//    TbsAlloc::test_self();
+    // let ref_box = alloc::boxed::Box::new(065);
+    // kprint!("{ref_box:?}\r\n");
 
     // Enable interrupts :)
     //cpu::Manager::set_interrupts::<true>();
@@ -503,44 +535,45 @@ extern "sysv64" fn rust_start(entries: *mut pmm::MemoryEntry, num_entries: usize
         let hostname = "radiant-pc";
         kprint!("\x1b[1;31mRadianOS:\x1b[1;33m{user_name}@{hostname}\x1b[0;0m>");
         loop {
-            let b = DebugSerial::get_byte();
-            if b == b'\r' || index >= line.max_len() {
-                kprint!("\r\n");
-                let s = line.as_str();
-                let mut split = s.split_whitespace();
-                if let Some(cmd) = split.next() {
-                    if let Some(c) = COMMANDS.iter().find(|&c| c.name.eq_ignore_ascii_case(cmd)) {
-                        let args = split.next().unwrap_or("");
-                        (c.handler)(&mut state, args);
-                    } else {
-                        let mut min_dist = usize::MAX;
-                        let mut min_cmd = None;
-                        for c in COMMANDS.iter() {
-                            let dist = levenshtein_distance(c.name, cmd);
-                            if dist < min_dist {
-                                min_dist = dist;
-                                min_cmd = Some(c);
+            if let Some(b) = DebugSerial::get_byte() {
+                if b == b'\r' || index >= line.max_len() {
+                    kprint!("\r\n");
+                    let s = line.as_str();
+                    let mut split = s.split_whitespace();
+                    if let Some(cmd) = split.next() {
+                        if let Some(c) = COMMANDS.iter().find(|&c| c.name.eq_ignore_ascii_case(cmd)) {
+                            let args = split.next().unwrap_or("");
+                            (c.handler)(&mut state, args);
+                        } else {
+                            let mut min_dist = usize::MAX;
+                            let mut min_cmd = None;
+                            for c in COMMANDS.iter() {
+                                let dist = levenshtein_distance(c.name, cmd);
+                                if dist < min_dist {
+                                    min_dist = dist;
+                                    min_cmd = Some(c);
+                                }
+                            }
+                            if let Some(c) = min_cmd {
+                                kprint!("maybe you meant <{}>?\r\n", c.name);
+                            } else {
+                                kprint!("unknown command <{}>\r\n", s);
                             }
                         }
-                        if let Some(c) = min_cmd {
-                            kprint!("maybe you meant <{}>?\r\n", c.name);
-                        } else {
-                            kprint!("unknown command <{}>\r\n", s);
-                        }
                     }
+                    // Free queue :)
+                    state.history_stack.push_fifo(line.clone());
+                    break;
+                } else if b == 0x08 || b == 0x7F {
+                    if index > 0 {
+                        kprint!("\x08 \x08");
+                        index -= 1;
+                    }
+                } else {
+                    line.bytes_mut()[index] = b;
+                    index += 1;
+                    DebugSerial::put_byte(b);
                 }
-                // Free queue :)
-                state.history_stack.push_fifo(line.clone());
-                break;
-            } else if b == 0x08 || b == 0x7F {
-                if index > 0 {
-                    kprint!("\x08 \x08");
-                    index -= 1;
-                }
-            } else if b != 0 {
-                line.bytes_mut()[index] = b;
-                index += 1;
-                DebugSerial::put_byte(b);
             }
         }
     }

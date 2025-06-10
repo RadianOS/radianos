@@ -119,7 +119,7 @@ impl Manager {
         vaddr: u64,
         flags: u64,
     ) {
-        kprint!("Mapping {paddr:0x} => {vaddr:0x}\r\n",);
+        //kprint!("Mapping {paddr:0x} => {vaddr:0x}\r\n",);
         let index = [
             (vaddr >> 39) as usize % NUM_ENTRIES,
             (vaddr >> 30) as usize % NUM_ENTRIES,

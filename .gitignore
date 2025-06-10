@@ -13,3 +13,4 @@ esp/
 .vscode
 *.elf
 *.efi
+*.log
