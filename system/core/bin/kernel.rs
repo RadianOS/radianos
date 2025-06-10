@@ -11,9 +11,7 @@ use radian_core::{
     containers::{StaticString, StaticVec},
     cpu,
     prelude::*,
-    smp,
-    styles::{BRED, RBRRED, RESET},
-    task, vmm, weak_typed_enum,
+    smp, task, vmm, weak_typed_enum,
 };
 
 /// Do not remove these or bootloader fails due to 0-sized section, thanks
