@@ -1,4 +1,5 @@
 add-symbol-file target/x86_64-unknown-none/debug/kernel
+br naked_start
 br test_usermode
 br cpu.rs:radian_core::cpu::Manager::dummy_int_handler
 br task.rs:radian_core::task::Manager::switch_to_usermode
@@ -11,3 +12,4 @@ br task.rs:radian_core::task::Manager::switch_to_usermode
 #br TbsAlloc.rs:232
 br hotswap_header
 target remote localhost:1234
+c

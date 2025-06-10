@@ -13,7 +13,9 @@ SECTIONS {
 
     .text : ALIGN(4K) {
         *(.text.init)
+        *(.text.hotswap)
         *(.text.int_vector)
+        . = ALIGN(4096);
         *(.text* .text.*)
     } >ram AT>ram :text
     .data : ALIGN(4K) {
@@ -25,6 +27,7 @@ SECTIONS {
         *(.srodata* .srodata.*)
     } >ram AT>ram :rodata
     .bss : ALIGN(4K) {
+        PROVIDE(BSS_START = .);
         *(COMMON)
         *(.bss* .bss.*)
         *(.sbss* .sbss.*)
@@ -32,6 +35,7 @@ SECTIONS {
         PROVIDE(STACK_BOTTOM = .);
         . += 8192;
         PROVIDE(STACK_TOP = .);
+        PROVIDE(BSS_END = .);
     } >ram AT>ram :bss
 
     PROVIDE(KERNEL_END = .);

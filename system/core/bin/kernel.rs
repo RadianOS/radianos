@@ -80,7 +80,7 @@ struct Command {
 }
 
 
-const COMMANDS: [Command; 25] = [
+const COMMANDS: [Command; 27] = [
     Command{
         name: "help",
         desc: "get help",
@@ -366,7 +366,50 @@ const COMMANDS: [Command; 25] = [
         }
     },
     Command{
-        name: "hotswap",
+        name: "poke",
+        desc: "<addr> <value> <count> poke address (byte)",
+        handler: |state, s| {
+            let mut split = s.split_whitespace();
+            if let Some(Some(addr)) = split.next().map(parse_literal) {
+                if let Some(Some(value)) = split.next().map(parse_literal) {
+                    let len = split.next().map(parse_literal).unwrap_or(Some(1)).unwrap_or(1);
+                    let ptr = addr as *mut u8;
+                    unsafe {
+                        ptr.write_bytes(value as u8, len);
+                    }
+                }
+            } else {
+                kprint!("invalid addr\r\n");
+            }
+        }
+    },
+    Command{
+        name: "peek",
+        desc: "<addr> <count> peek address",
+        handler: |state, s| {
+            let mut split = s.split_whitespace();
+            if let Some(Some(addr)) = split.next().map(parse_literal) {
+                let len = split.next().map(parse_literal).unwrap_or(Some(1)).unwrap_or(1);
+                let ptr = addr as *const u8;
+                unsafe {
+                    for i in 0..len {
+                        if i == 0 || i % 8 == 0 {
+                            if i != 0 {
+                                kprint!("\r\n");
+                            }
+                            kprint!("{:016x} ", ptr as usize + i);
+                        }
+                        kprint!("{:02x} ", ptr.add(i).read());
+                    }
+                    kprint!("\r\n");
+                }
+            } else {
+                kprint!("invalid addr\r\n");
+            }
+        }
+    },
+    Command{
+        name: "swap",
         desc: "initiate hotswap procedure",
         handler: |state, s| {
             cpu::Manager::set_interrupts::<false>(); //do not interrupt me
@@ -387,7 +430,7 @@ const COMMANDS: [Command; 25] = [
                     index += 1;
                 }
             }
-            let file_size = numbuf.as_str().parse::<u64>().unwrap();
+            let file_size = numbuf.as_str().parse::<u64>().unwrap() - 8192;
             unsafe {
                 core::arch::asm!(
                     "jmp _Zfnhotswap_header",
@@ -400,7 +443,7 @@ const COMMANDS: [Command; 25] = [
     },
 ];
 
-global_asm!(include_str!("hotswap.S"), options(att_syntax));
+global_asm!(include_str!("head.S"), options(att_syntax));
 
 pub fn levenshtein_distance(s1: &str, s2: &str) -> usize {
     if s1.len() >= 16 || s2.len() >= 16 {
@@ -432,19 +475,6 @@ pub fn levenshtein_distance(s1: &str, s2: &str) -> usize {
         }
         dist[s1.len() - 1][s2.len() - 1] as usize
     }
-}
-
-#[unsafe(link_section = ".text.init")]
-#[unsafe(naked)]
-#[unsafe(no_mangle)]
-unsafe extern "C" fn naked_start() {
-    core::arch::naked_asm!(
-        "cli",
-        "lea rsp, STACK_TOP",
-        "call rust_start",
-    "2:",
-        "jmp 2b"
-    );
 }
 
 #[unsafe(no_mangle)]
@@ -517,7 +547,7 @@ extern "sysv64" fn rust_start(entries: *mut pmm::MemoryEntry, num_entries: usize
     }
     kprint!("\x1b[0;0m\r\n");
 
-    kprint!("kernel console, type <help>?\r\n");
+    kprint!("kernel test console, type <help>?\r\n");
     let mut state = ConsoleState{
         current_actor: db.find_from_str("worker_0").unwrap(),
         current_aspace: kernel_aspace,
@@ -573,6 +603,10 @@ extern "sysv64" fn rust_start(entries: *mut pmm::MemoryEntry, num_entries: usize
                     line.bytes_mut()[index] = b;
                     index += 1;
                     DebugSerial::put_byte(b);
+                }
+            } else {
+                unsafe {
+                    core::arch::asm!("pause");
                 }
             }
         }

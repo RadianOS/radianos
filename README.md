@@ -17,7 +17,7 @@ make run
 
 Get a dumb terminal emulator, like `picocom` and run `picocom /dev/pts/1` (where `1` is replaced by whatever your PTY is).
 
-Then to hotswap the kernel, in the ROS terminal type: `hotswap`. The kernel will stop all execution and cease everything. You can then send the binary file of the kernel like so:
+Then to hotswap the kernel, in the ROS terminal type: `swap`. The kernel will stop all execution and cease everything. You can then send the binary file of the kernel like so:
 
 ```sh
 HOTSWAP_TARGET=/dev/pts/1 make run hotswap-kernel

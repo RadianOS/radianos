@@ -44,9 +44,10 @@ build-kernel:
 	RUSTFLAGS='-C link-arg=-Tsystem/core/bin/kernel.ld -C relocation-model=static' cargo build $(if $(RELEASE),--release,) --target x86_64-unknown-none --bin kernel
 
 hotswap-kernel: build-kernel
+	objdump -SC $(KERNEL_BUILD_DIR)/kernel > $(KERNEL_BUILD_DIR)/kernel.txt
 	objcopy -O binary $(KERNEL_BUILD_DIR)/kernel $(KERNEL_BUILD_DIR)/kernel.bin
-	wc -c < /home/marysue/src/radianos/target/x86_64-unknown-none/debug/kernel.bin > $(HOTSWAP_TARGET)
-	cat $(KERNEL_BUILD_DIR)/kernel.bin >> $(HOTSWAP_TARGET)
+	wc -c < $(KERNEL_BUILD_DIR)/kernel.bin > $(HOTSWAP_TARGET)
+	tail -c +8193 $(KERNEL_BUILD_DIR)/kernel.bin >> $(HOTSWAP_TARGET)
 
 build-drivers:
 	clear && objdump -t target/x86_64-unknown-none/debug/deps/libradian_core-eee6dde371a58c3d.a | awk '/a/ {print "PROVIDE( \"" $4 "\" = " $1 ");"}' | awk '!seen[$2]++' | sort
@@ -77,7 +78,7 @@ qemu: iso
 	qemu-system-x86_64 \
 		-drive if=pflash,format=raw,readonly=on,file=$(OVMF_CODE) \
 		-drive format=raw,file=$(ISO_FILE) \
-		-smp 4 -m 2G -cpu max -s \
+		-m 2G -cpu max -s \
 		-d unimp,guest_errors,int \
 		-serial pty \
 		-device qemu-xhci \
@@ -91,7 +92,7 @@ qemu-nographic: iso # yo stop allocating so much my pc only has 8G atleast alloc
 	qemu-system-x86_64 \
 		-drive if=pflash,format=raw,readonly=on,file=$(OVMF_CODE) \
 		-drive format=raw,file=$(ISO_FILE) \
-		-smp 4 -m 2G -cpu max -s \
+		-m 2G -cpu max -s \
 		-d unimp,guest_errors,int \
 		-serial pty \
 		-device qemu-xhci \
