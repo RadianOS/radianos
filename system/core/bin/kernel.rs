@@ -3,9 +3,9 @@
 #![feature(str_from_raw_parts)]
 
 extern crate alloc;
-use crate::styles::{BBRRED, BRED, RADOS, RBRRED, RESET, USER};
 use core::{arch::global_asm, str};
 use iced_x86::Formatter;
+use radian_core::styles::{BBRRED, BRED, RADOS, RBRRED, RESET, USER};
 use radian_core::{
     TbsAlloc,
     containers::{StaticString, StaticVec},
