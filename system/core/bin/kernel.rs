@@ -3,7 +3,7 @@
 #![feature(str_from_raw_parts)]
 
 use core::str;
-use radian_core::{containers::{StaticString, StaticVec}, cpu, prelude::*, smp, task, vmm, weak_typed_enum};
+use radian_core::{containers::{StaticString, StaticVec}, cpu, prelude::*, smp, task, vmm, weak_typed_enum, TbsAlloc};
 
 /// Do not remove these or bootloader fails due to 0-sized section, thanks
 #[allow(dead_code)]
@@ -444,6 +444,9 @@ extern "sysv64" fn rust_start(entries: *mut pmm::MemoryEntry, num_entries: usize
     let res = policy::Manager::check_action(db, kernel_worker, start_task);
     assert_eq!(kernel_worker, db.find_from_str("worker_0").unwrap());
     kprint!("[policy] check policy? {res}\r\n");
+
+    TbsAlloc::TbsAllocator::init();
+    TbsAlloc::test_self();
 
     // Enable interrupts :)
     //cpu::Manager::set_interrupts::<true>();

@@ -19,7 +19,7 @@ pub mod smp;
 pub mod task;
 pub mod vfs;
 pub mod vmm;
-//pub mod TbsAlloc;
+pub mod TbsAlloc;
 
 #[macro_export]
 macro_rules! dense_bitfield {

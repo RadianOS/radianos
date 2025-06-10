@@ -1,4 +1,4 @@
-use core::ops::{Index, IndexMut};
+use core::{marker::PhantomData, ops::{Index, IndexMut}};
 
 #[derive(Debug, Clone)]
 pub struct StaticVec<T, const N: usize> {
@@ -82,8 +82,17 @@ impl<T, const N: usize> StaticVec<T, N> {
     pub fn get_mut(&mut self, index: usize) -> Option<&mut T> {
         self.inner.get_mut(index)
     }
-}
 
+    #[inline]
+    pub fn iter(&self) -> core::slice::Iter<'_, T> {
+        self.inner.iter()   
+    }
+
+    #[inline]
+    pub fn iter_mut(&mut self) -> core::slice::IterMut<'_, T> {
+        self.inner.iter_mut()   
+    }
+}
 impl<T, const N: usize> Index<usize> for StaticVec<T, N> {
     type Output = T;
     fn index(&self, index: usize) -> &Self::Output {
@@ -93,6 +102,20 @@ impl<T, const N: usize> Index<usize> for StaticVec<T, N> {
 impl<T, const N: usize> IndexMut<usize> for StaticVec<T, N> {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         &mut self.inner[index]
+    }
+}
+impl<'a, T, const N: usize> IntoIterator for &'a StaticVec<T, N> {
+    type Item = &'a T;
+    type IntoIter = core::slice::Iter<'a, T>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+impl<'a, T, const N: usize> IntoIterator for &'a mut StaticVec<T, N> {
+    type Item = &'a mut T;
+    type IntoIter = core::slice::IterMut<'a, T>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter_mut()
     }
 }
 
@@ -144,5 +167,24 @@ impl<const N: usize> StaticString<N> {
 impl<const N: usize> Default for StaticString<N> {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[derive(Default, Debug, Clone, Copy)]
+pub struct FlexibleArray<T>{ _phantom: PhantomData<T>, }
+impl<T> FlexibleArray<T> {
+    #[inline] pub const fn new() -> Self {
+        Self{ _phantom: PhantomData{} }
+    }
+}
+impl<T> Index<usize> for FlexibleArray<T> {
+    type Output = T;
+    #[inline] fn index(&self, index: usize) -> &T {
+        unsafe { ((&raw const self._phantom) as *const T).add(index).as_ref().unwrap() }
+    }
+}
+impl<T> IndexMut<usize> for FlexibleArray<T> {
+    #[inline] fn index_mut(&mut self, index: usize) -> &mut T {
+        unsafe { ((&raw mut self._phantom) as *mut T).add(index).as_mut().unwrap() }
     }
 }

@@ -7,5 +7,6 @@ br task.rs:radian_core::task::Manager::switch_to_usermode
 #     br *(&GLOBAL_IDT_ASM + $i)
 #     set $i = $i + 16
 # end
-br kernel.rs:323
+#br kernel.rs:323
+br test_self
 target remote localhost:1234
